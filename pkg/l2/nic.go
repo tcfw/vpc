@@ -10,6 +10,9 @@ const (
 	nicPattern = "n-%s"
 )
 
+//CreateNIC creates a new tap device attached to a VPC bridge
+//NOTE: this type of NIC can really only be suitable for containers
+//TODO(tcfw) create new functio to generate macvtap
 func CreateNIC(stack *Stack, id string) (netlink.Link, error) {
 	la := netlink.NewLinkAttrs()
 	la.Name = fmt.Sprintf(nicPattern, id)
@@ -30,6 +33,7 @@ func CreateNIC(stack *Stack, id string) (netlink.Link, error) {
 	return nic, err
 }
 
+//GetNIC finds a tap interface given a stack and expected id
 func GetNIC(stack *Stack, id string) (netlink.Link, error) {
 	handle, err := netlink.NewHandle(netlink.FAMILY_ALL)
 	if err != nil {
@@ -51,6 +55,7 @@ func GetNIC(stack *Stack, id string) (netlink.Link, error) {
 	return nil, nil
 }
 
+//HasNIC checks if a nic exists by trying to get it
 func HasNIC(stack *Stack, id string) (bool, error) {
 	nic, err := GetNIC(stack, id)
 	if err != nil {
@@ -59,6 +64,7 @@ func HasNIC(stack *Stack, id string) (bool, error) {
 	return nic != nil, nil
 }
 
+//DeleteNIC deletes the tap from
 func DeleteNIC(stack *Stack, id string) error {
 	if ok, _ := HasNIC(stack, id); !ok {
 		return fmt.Errorf("nic %s does not exist", id)

@@ -1,0 +1,47 @@
+syntax="proto3";
+
+package vpc.l2;
+
+message StackRequest {
+	int32 vpc_id = 1;
+}
+
+message Stack {
+	int32 vpcID = 1;
+	string bridge_link_name = 2;
+	int32 bridge_link_index = 3;
+	string vtep_link_name = 4;
+	int32 vtep_link_index = 5;
+}
+
+message StackResponse {
+	Stack stack = 1;
+	StackStatusResponse status = 2;
+}
+
+enum LinkStatus {
+	DOWN = 0;
+	UP = 1;
+	MISSING = 2;
+}
+
+message StackStatusResponse {
+	LinkStatus bridge = 1;
+	LinkStatus vtep = 2;
+}
+
+message StackChange {
+	int32 vpc_id = 1;
+	string action = 2;
+	StackStatusResponse status = 3;
+}
+
+message Empty {}
+
+service L2Service {
+	rpc AddStack(StackRequest) returns (StackResponse) {};
+	rpc GetStack(StackRequest) returns (StackResponse) {};
+	rpc StackStatus(StackRequest) returns (StackStatusResponse) {};
+	rpc DeleteStack(StackRequest) returns (Empty) {};
+	rpc WatchStacks(Empty) returns (stream StackChange) {};
+}

@@ -1,0 +1,64 @@
+syntax="proto3";
+
+package vpc.l3;
+
+import "l2.proto";
+
+message SubnetLink {
+	string cidr = 1;
+	string link_mac = 2;
+	string link_ip = 3;
+}
+
+message Route {
+	string dest_cidr = 1;
+	string next_hop = 2;
+}
+
+message ExternalConfig {
+	string network_cidr = 1;
+	string ip = 2;
+	repeated Route routes = 3;
+}
+
+message RouterConfig {
+	bool disable_l3_ecmp_hasing = 1;
+	string netns = 2;
+}
+
+message Router {
+	string id = 1;
+	repeated SubnetLink subnets = 2;
+	ExternalConfig public_network = 3;
+	RouterConfig config = 4;
+}
+
+message Empty {}
+
+message AddRouterRequest {
+	int32 vpc_id = 1;
+	Router router = 2;
+}
+
+message GetRouterRequest {
+	string id = 1;
+	int32 vpc_id = 2;
+}
+
+message SubnetLinkStatus {
+	SubnetLink subnet = 1;
+	vpc.l2.LinkStatus status = 2;
+}
+
+message RouterStatusResponse {
+	vpc.l2.LinkStatus router = 1;
+	vpc.l2.LinkStatus external = 2;
+	repeated SubnetLinkStatus subnets = 3;
+}
+
+service L3Service {
+	rpc AddRouter(AddRouterRequest) returns (Router) {};
+	rpc GetRouter(GetRouterRequest) returns (Router) {};
+	rpc RouterStatus(GetRouterRequest) returns (RouterStatusResponse) {};
+	rpc DeleteRouter(GetRouterRequest) returns (Empty) {};
+}

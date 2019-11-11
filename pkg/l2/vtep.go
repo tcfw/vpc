@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	vtepPattern = "vtep-vpc-%d"
+	vtepPattern = "vt-%d"
 )
 
+//GetVTEP finds the vtep for the given VPC
 func GetVTEP(vpcID int32) (netlink.Link, error) {
 	handle, err := netlink.NewHandle(netlink.FAMILY_ALL)
 	if err != nil {
@@ -31,14 +32,28 @@ func GetVTEP(vpcID int32) (netlink.Link, error) {
 	return nil, nil
 }
 
+//HasVTEP checks if the vtep exists by getting it
 func HasVTEP(vpcID int32) (bool, error) {
 	vtep, err := GetVTEP(vpcID)
 	if err != nil {
 		return false, err
 	}
+
+	br, err := GetVPCBridge(vpcID)
+	if err != nil {
+		return false, err
+	}
+
+	if br != nil && vtep != nil && vtep.Attrs().MasterIndex != br.Attrs().Index {
+		return false, fmt.Errorf("VTEP is not mastered by VPC Bridge")
+	}
+
 	return vtep != nil, nil
 }
 
+//CreateVTEP creates a new vtep using the linux VxLAN device
+//in nolearning mode (use MP-BGP-EVPN/L2VPN for learning)
+//NOTE: the actual VxLAN traffic port is used insteado the linux default
 func CreateVTEP(vpcID int32, bridge *netlink.Bridge, dev string) (*netlink.Vxlan, error) {
 	if ok, _ := HasVTEP(vpcID); ok {
 		return nil, fmt.Errorf("vpc %d already has a vtep", vpcID)
@@ -74,6 +89,7 @@ func CreateVTEP(vpcID int32, bridge *netlink.Bridge, dev string) (*netlink.Vxlan
 	return vtep, err
 }
 
+//DeleteVTEP delets the linux vxlan device
 func DeleteVTEP(vpcID int32) error {
 	if ok, _ := HasVTEP(vpcID); !ok {
 		return fmt.Errorf("vpc %d vxlan tunnel does not exist", vpcID)

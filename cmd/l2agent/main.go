@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tcfw/vpc/l2/cmd"
+	"github.com/tcfw/vpc/pkg/l2/cmd"
 )
 
 func main() {

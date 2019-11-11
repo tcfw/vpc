@@ -1,0 +1,143 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "l2.proto",
+    "version": "version not set"
+  },
+  "schemes": [
+    "http",
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {},
+  "definitions": {
+    "l2Empty": {
+      "type": "object"
+    },
+    "l2LinkStatus": {
+      "type": "string",
+      "enum": [
+        "DOWN",
+        "UP",
+        "MISSING"
+      ],
+      "default": "DOWN"
+    },
+    "l2Stack": {
+      "type": "object",
+      "properties": {
+        "vpcID": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "bridge_link_name": {
+          "type": "string"
+        },
+        "bridge_link_index": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "vtep_link_name": {
+          "type": "string"
+        },
+        "vtep_link_index": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "l2StackChange": {
+      "type": "object",
+      "properties": {
+        "vpc_id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "action": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/l2StackStatusResponse"
+        }
+      }
+    },
+    "l2StackResponse": {
+      "type": "object",
+      "properties": {
+        "stack": {
+          "$ref": "#/definitions/l2Stack"
+        },
+        "status": {
+          "$ref": "#/definitions/l2StackStatusResponse"
+        }
+      }
+    },
+    "l2StackStatusResponse": {
+      "type": "object",
+      "properties": {
+        "bridge": {
+          "$ref": "#/definitions/l2LinkStatus"
+        },
+        "vtep": {
+          "$ref": "#/definitions/l2LinkStatus"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "type_url": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string",
+          "format": "byte"
+        }
+      }
+    },
+    "runtimeStreamError": {
+      "type": "object",
+      "properties": {
+        "grpc_code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "http_code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "http_status": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    }
+  },
+  "x-stream-definitions": {
+    "l2StackChange": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "$ref": "#/definitions/l2StackChange"
+        },
+        "error": {
+          "$ref": "#/definitions/runtimeStreamError"
+        }
+      },
+      "title": "Stream result of l2StackChange"
+    }
+  }
+}

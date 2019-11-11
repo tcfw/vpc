@@ -17,6 +17,9 @@ strip:
 	strip --strip-unneeded ./build/l2-agent
 	strip --strip-unneeded ./build/l3-agent
 
+protos:
+	./scripts/protoc-gen.sh
+
 clean:
 	rm -f ./build/l3-agent
 	rm -f ./build/l2-agent

@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	vpcBridgePattern = "br-vpc-%d"
+	vpcBridgePattern = "brv-%d"
 )
 
+//GetVPCBridge finds the bridge associated with a VPC
 func GetVPCBridge(vpcID int32) (netlink.Link, error) {
 	handle, err := netlink.NewHandle(netlink.FAMILY_ALL)
 	if err != nil {
@@ -31,6 +32,7 @@ func GetVPCBridge(vpcID int32) (netlink.Link, error) {
 	return nil, nil
 }
 
+//HasVPCBridge checks if a bridge exists by trying to get it
 func HasVPCBridge(vpcID int32) (bool, error) {
 	br, err := GetVPCBridge(vpcID)
 	if err != nil {
@@ -39,6 +41,7 @@ func HasVPCBridge(vpcID int32) (bool, error) {
 	return br != nil, nil
 }
 
+//CreateVPCBridge creates a new linux bridge for a VPC
 func CreateVPCBridge(vpcID int32) (*netlink.Bridge, error) {
 	if ok, _ := HasVPCBridge(vpcID); ok {
 		return nil, fmt.Errorf("vpc %d already has a bridge", vpcID)
@@ -57,6 +60,7 @@ func CreateVPCBridge(vpcID int32) (*netlink.Bridge, error) {
 	return br, err
 }
 
+//DeleteVPCBridge deletes a linux bridge for a VPC
 func DeleteVPCBridge(vpcID int32) error {
 	if ok, _ := HasVPCBridge(vpcID); !ok {
 		return fmt.Errorf("vpc %d bridge does not exist", vpcID)

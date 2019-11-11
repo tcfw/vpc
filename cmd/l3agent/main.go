@@ -1,40 +1,35 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 
-	"github.com/tcfw/vpc/l2"
-	"github.com/tcfw/vpc/l3"
+	"github.com/tcfw/vpc/pkg/l3/cmd"
 )
 
 func main() {
-	flag.Parse()
+	cmd := cmd.NewDefaultCommand()
 
-	vpcID := int32(1)
-
-	stack, err := l2.GetVPCStack(vpcID)
-	if err != nil {
-		fmt.Printf("Failed to get stack: %s", err)
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
-	r, err := l3.CreateRouter(stack, "a8s9d")
-	if err != nil {
-		fmt.Printf("Failed to create router: %s", err)
-		os.Exit(1)
-	}
+	// vpcID := int32(1)
 
-	waitForExit()
+	// stack, err := l2.GetVPCStack(vpcID)
+	// if err != nil {
+	// 	fmt.Printf("Failed to get stack: %s", err)
+	// 	os.Exit(1)
+	// }
 
-	r.Delete()
-}
+	// r, err := l3.CreateRouter(stack, "a8s9d")
+	// if err != nil {
+	// 	fmt.Printf("Failed to create router: %s", err)
+	// 	os.Exit(1)
+	// }
 
-func waitForExit() {
-	var sigChan chan os.Signal
-	sigChan = make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-	<-sigChan
+	// waitForExit()
+
+	// r.Delete()
 }
