@@ -1,36 +1,17 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 
-	l2 "github.com/tcfw/vpc/l2"
+	"github.com/tcfw/vpc/l2/cmd"
 )
 
 func main() {
-	flag.Parse()
+	cmd := cmd.NewDefaultCommand()
 
-	vpcID := int32(1)
-
-	stack, err := l2.CreateVPCStack(vpcID)
-	if err != nil {
-		fmt.Printf("Failed to create stack: %s", err)
-		return
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
-
-	waitForExit()
-
-	if err := l2.DeleteVPCStack(stack); err != nil {
-		fmt.Printf("Failed to delete stack: %s", err)
-		return
-	}
-}
-
-func waitForExit() {
-	var sigChan chan os.Signal
-	sigChan = make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-	<-sigChan
 }
