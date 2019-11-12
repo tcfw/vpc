@@ -70,7 +70,7 @@ func (r *Router) init() error {
 		//Default GW(s)
 		dst, _ := netlink.ParseIPNet("0.0.0.0/0")
 		netlink.RouteReplace(&netlink.Route{Dst: dst, MultiPath: []*netlink.NexthopInfo{
-			&netlink.NexthopInfo{
+			{
 				LinkIndex: eth0.Attrs().Index,
 				Gw:        net.IPv4(192, 168, 122, 1),
 			},
