@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	vtepPattern = "vt-%d"
+	vtepPattern = "t-%d"
 )
 
 //GetVTEP finds the vtep for the given VPC

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // NewDefaultCommand creates the `l2` command and its nested children.
@@ -19,6 +20,11 @@ func NewDefaultCommand() *cobra.Command {
 	cmds.AddCommand(NewCreateCmd())
 	cmds.AddCommand(NewDeleteCmd())
 	cmds.AddCommand(NewCheckCmd())
+	cmds.AddCommand(NewServeCmd())
+	cmds.AddCommand(NewWatchCmd())
+
+	cmds.PersistentFlags().StringP("vtepdev", "i", "eth0", "Device for VTEP endpoint")
+	viper.BindPFlag("vtepdev", cmds.PersistentFlags().Lookup("vtepdev"))
 
 	return cmds
 }

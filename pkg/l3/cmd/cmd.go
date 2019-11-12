@@ -1,10 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-	"os/signal"
-
 	"github.com/spf13/cobra"
 )
 
@@ -16,22 +12,11 @@ func NewDefaultCommand() *cobra.Command {
 		Short: "l3",
 		Long:  `l3 providers routing for vxlans`,
 		Run: func(cmd *cobra.Command, args []string) {
-			vpcs, _ := cmd.Flags().GetUintSlice("vpc")
-			fmt.Printf("%v\n", vpcs)
-
-			waitForExit()
+			cmd.Help()
 		},
 	}
 
-	cmds.Flags().UintSlice("vpc", []uint{}, "vpc to add local router too")
-	cmds.MarkFlagRequired("vpc")
+	cmds.AddCommand(NewCreateCmd())
 
 	return cmds
-}
-
-func waitForExit() {
-	var sigChan chan os.Signal
-	sigChan = make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-	<-sigChan
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-services='l2 l3'
+services='l2'
 
 for service in ${services}
 do

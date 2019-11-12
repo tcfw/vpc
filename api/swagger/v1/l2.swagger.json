@@ -16,6 +16,14 @@
   ],
   "paths": {},
   "definitions": {
+    "NicRequestNicType": {
+      "type": "string",
+      "enum": [
+        "TAP",
+        "MACVTAP"
+      ],
+      "default": "TAP"
+    },
     "l2Empty": {
       "type": "object"
     },
@@ -27,6 +35,36 @@
         "MISSING"
       ],
       "default": "DOWN"
+    },
+    "l2Nic": {
+      "type": "object",
+      "properties": {
+        "vpc_id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "hwaddr": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "l2NicStatusResponse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/l2LinkStatus"
+        }
+      }
     },
     "l2Stack": {
       "type": "object",

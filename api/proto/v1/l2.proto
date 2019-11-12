@@ -36,6 +36,30 @@ message StackChange {
 	StackStatusResponse status = 3;
 }
 
+message NicRequest {
+	int32 vpc_id = 1;
+	string id = 2;
+	
+	enum NicType {
+		TAP = 0;
+		MACVTAP = 1;
+	}
+	
+	NicType type = 3;
+}
+
+message Nic {
+	int32 vpc_id = 1;
+	string hwaddr = 2;
+	string id = 3;
+	string name = 4;
+	int32 index = 5;
+}
+
+message NicStatusResponse {
+	LinkStatus status = 1;
+}
+
 message Empty {}
 
 service L2Service {
@@ -44,4 +68,8 @@ service L2Service {
 	rpc StackStatus(StackRequest) returns (StackStatusResponse) {};
 	rpc DeleteStack(StackRequest) returns (Empty) {};
 	rpc WatchStacks(Empty) returns (stream StackChange) {};
+
+	rpc AddNIC(NicRequest) returns (Nic) {};
+	rpc DeleteNIC(Nic) returns (Empty) {};
+	rpc NICStatus(Nic) returns (NicStatusResponse) {};
 }

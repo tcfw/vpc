@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	vpcBridgePattern = "brv-%d"
+	vpcBridgePattern = "b-%d"
 )
 
 //GetVPCBridge finds the bridge associated with a VPC

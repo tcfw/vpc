@@ -38,7 +38,8 @@ func setNSName(name string) error {
 		return err
 	}
 	f.Close()
-	if err := syscall.Mount("/proc/self/ns/net", p, "bind", syscall.MS_BIND, ""); err != nil {
+	nspath := fmt.Sprintf("/proc/%d/task/%d/ns/net", os.Getpid(), syscall.Gettid())
+	if err := syscall.Mount(nspath, p, "bind", syscall.MS_BIND, ""); err != nil {
 		return err
 	}
 	return nil

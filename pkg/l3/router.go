@@ -2,11 +2,13 @@ package l3
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
+	"time"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/lorenzosaino/go-sysctl"
-	"github.com/tcfw/vpc/l2"
+	"github.com/tcfw/vpc/pkg/l2"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -33,7 +35,7 @@ func CreateRouter(stack *l2.Stack, id string) (*Router, error) {
 		iptChain: stack.VPCID,
 	}
 
-	ns, err := createNetNS(fmt.Sprintf("vpc-router-%d", stack.VPCID))
+	ns, err := createNetNS(fmt.Sprintf("r-%s", id))
 	if err != nil {
 		return nil, err
 	}
@@ -119,9 +121,9 @@ func (r *Router) AddSubnet(subnet *net.IPNet) (netlink.Link, error) {
 	ethID := fmt.Sprintf("eth%d", c)
 	id := fmt.Sprintf("r-%s-%d", r.ID, c)
 
-	macs := subnetMacs()
+	// macs := subnetMacs()
 
-	veth, err := r.CreateVeth(r.stack.Bridge, id, ethID, macs[len(r.Veths)-1])
+	veth, err := r.CreateVeth(r.stack.Bridge, id, ethID, "any")
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +198,7 @@ func (r *Router) Delete() error {
 		netlink.LinkDel(veth)
 	}
 
-	if err := unbindNSName(fmt.Sprintf("vpc-router-%d", r.VPCID)); err != nil {
+	if err := unbindNSName(fmt.Sprintf("r-%s", r.ID)); err != nil {
 		fmt.Println(err)
 	}
 
@@ -208,4 +210,19 @@ func (r *Router) Delete() error {
 //Exec executes a given func inside the router network namespace
 func (r *Router) Exec(fn func() error) error {
 	return execInNetNs(r.NetNS, fn)
+}
+
+//NewID generates a unique id which can be assigned to routers
+func NewID() string {
+	length := 5
+
+	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	var seededRand *rand.Rand = rand.New(
+		rand.NewSource(time.Now().UnixNano()))
+
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
 }
