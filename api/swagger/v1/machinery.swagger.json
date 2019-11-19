@@ -1,0 +1,109 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "machinery.proto",
+    "version": "version not set"
+  },
+  "schemes": [
+    "http",
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {},
+  "definitions": {
+    "MachineCapability": {
+      "type": "string",
+      "enum": [
+        "ORCHEST",
+        "COMPUTE",
+        "NETWORK"
+      ],
+      "default": "ORCHEST"
+    },
+    "machineryDeviceType": {
+      "type": "string",
+      "enum": [
+        "ROUTER",
+        "VM"
+      ],
+      "default": "ROUTER"
+    },
+    "machineryMachine": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MachineCapability"
+          }
+        },
+        "last_checkin": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        }
+      }
+    },
+    "machineryMachinesResponse": {
+      "type": "object",
+      "properties": {
+        "machines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/machineryMachine"
+          }
+        }
+      }
+    },
+    "machineryPingResponse": {
+      "type": "object"
+    },
+    "machineryPlacement": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "machine_id": {
+          "type": "string"
+        },
+        "vpc_id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "device_type": {
+          "$ref": "#/definitions/machineryDeviceType"
+        },
+        "device_id": {
+          "type": "string"
+        }
+      }
+    },
+    "machineryPlacementsResponse": {
+      "type": "object",
+      "properties": {
+        "placements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/machineryPlacement"
+          }
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/machineryDeviceType"
+          }
+        }
+      }
+    }
+  }
+}

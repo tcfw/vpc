@@ -7,6 +7,7 @@ type Stack struct {
 	VPCID  int32
 	Bridge *netlink.Bridge
 	Vtep   *netlink.Vxlan
+	Nics   map[string]*VNic
 }
 
 //CreateVPCStack creates a linux bridge and vtep to construct the VPC
@@ -24,7 +25,7 @@ func CreateVPCStack(vpcID int32, vtepDev string) (*Stack, error) {
 		return nil, err
 	}
 
-	return &Stack{VPCID: vpcID, Bridge: br, Vtep: vtep}, nil
+	return &Stack{VPCID: vpcID, Bridge: br, Vtep: vtep, Nics: map[string]*VNic{}}, nil
 }
 
 //GetVPCStack finds the linux bridge and vtep assocated with the VPC id

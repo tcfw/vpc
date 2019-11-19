@@ -1,0 +1,66 @@
+syntax="proto3";
+
+package vpc;
+option go_package = "vpc";
+
+message VPC {
+	int32 id = 1;
+}
+
+message Subnet {
+	string id = 1;
+	int32 vpc_id = 2;
+	string region = 3;
+	string cidr = 4;
+}
+
+message InternetGW {
+	string id = 1;
+	int32 vpc_id = 2;
+}
+
+message PublicIP {
+	string id = 1;
+	int32 vpc_id = 2;
+	string ip = 3;
+	bool reserved = 4;
+}
+
+message FWRule {	
+	string proto = 2;
+	string cidr = 3;
+	int32 min_port = 4;
+	int32 max_port = 5;
+}
+
+message FWRuleSet {
+	string id = 1;
+	string name = 2;
+	repeated FWRule rules = 3;
+
+	enum Direction {
+		INBOUND = 0;
+		OUTBOUND = 1;
+	}
+	
+	Direction direction = 4;
+}
+
+message VPCsRequest {}
+message VPCsResponse {
+	repeated VPC VPCs = 1;
+}
+
+message VPCInfoRequest {
+	int32 vpc_id = 1;
+}
+
+message VPCInfoResponse {
+	repeated Subnet subnets = 1;
+	InternetGW internetGW = 2;
+}
+
+service VPCService {
+	rpc VPCs(VPCsRequest) returns (VPCsResponse) {};
+	rpc VPCInfo(VPCInfoRequest) returns (VPCInfoResponse) {};
+}

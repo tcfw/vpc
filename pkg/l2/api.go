@@ -14,7 +14,7 @@ import (
 
 //Serve start the GRPC server
 func Serve(port uint) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -194,20 +194,17 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 		return nil, fmt.Errorf("NIC already exists")
 	}
 
-	switch req.Type {
-	case l2API.NicRequest_TAP:
-		link, err := CreateNIC(stack, req.Id)
-		if err != nil {
-			return nil, err
-		}
-
-		return formatToAPINic(stack, link, req.Id), nil
-	case l2API.NicRequest_MACVTAP:
-	default:
-		return nil, fmt.Errorf("MACVTAP type not yet implemented")
+	link, err := CreateNIC(stack, req.Id, uint16(req.SubnetVlanId))
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	s.logChange(&l2API.StackChange{
+		VpcId:  req.VpcId,
+		Action: "nic_added",
+	})
+
+	return formatToAPINic(stack, link, req.Id), nil
 }
 
 //DeleteNIC Delete a NIC from a VPC linux bridge
@@ -229,6 +226,11 @@ func (s *Server) DeleteNIC(ctx context.Context, req *l2API.Nic) (*l2API.Empty, e
 	}
 
 	err = DeleteNIC(stack, req.Id)
+
+	s.logChange(&l2API.StackChange{
+		VpcId:  req.VpcId,
+		Action: "nic_deleted",
+	})
 
 	return &l2API.Empty{}, err
 }
@@ -266,7 +268,7 @@ func (s *Server) NICStatus(ctx context.Context, req *l2API.Nic) (*l2API.NicStatu
 
 func formatToAPIStack(stack *Stack) *l2API.Stack {
 	APIStack := &l2API.Stack{
-		VpcID: stack.VPCID,
+		VpcId: stack.VPCID,
 	}
 
 	if stack.Bridge != nil {
@@ -283,12 +285,15 @@ func formatToAPIStack(stack *Stack) *l2API.Stack {
 }
 
 func formatToAPINic(stack *Stack, link netlink.Link, id string) *l2API.Nic {
+	vlan := getNicVlans(int32(link.Attrs().Index))
+
 	return &l2API.Nic{
 		VpcId:  stack.VPCID,
 		Hwaddr: link.Attrs().HardwareAddr.String(),
 		Name:   link.Attrs().Name,
 		Index:  int32(link.Attrs().Index),
 		Id:     id,
+		Vlan:   uint32(vlan),
 	}
 }
 

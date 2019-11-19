@@ -16,14 +16,6 @@
   ],
   "paths": {},
   "definitions": {
-    "NicRequestNicType": {
-      "type": "string",
-      "enum": [
-        "TAP",
-        "MACVTAP"
-      ],
-      "default": "TAP"
-    },
     "l2Empty": {
       "type": "object"
     },
@@ -55,6 +47,10 @@
         "index": {
           "type": "integer",
           "format": "int32"
+        },
+        "vlan": {
+          "type": "integer",
+          "format": "int64"
         }
       }
     },
@@ -69,7 +65,7 @@
     "l2Stack": {
       "type": "object",
       "properties": {
-        "vpcID": {
+        "vpc_id": {
           "type": "integer",
           "format": "int32"
         },

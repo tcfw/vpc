@@ -95,10 +95,11 @@ func DeleteVTEP(vpcID int32) error {
 		return fmt.Errorf("vpc %d vxlan tunnel does not exist", vpcID)
 	}
 
-	br, err := GetVTEP(vpcID)
+	vtep, err := GetVTEP(vpcID)
 	if err != nil {
 		return err
 	}
 
-	return netlink.LinkDel(br)
+	return netlink.LinkDel(vtep)
 }
+

@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/lorenzosaino/go-sysctl"
 	"github.com/tcfw/vpc/pkg/l2"
@@ -23,6 +24,15 @@ type Router struct {
 
 	stack    *l2.Stack
 	iptChain int32
+	subnets  map[string]*Subnet
+}
+
+type Subnet struct {
+	id       string
+	vlan     uint16
+	iface    netlink.Link
+	network  *net.IPNet
+	vethPeer string
 }
 
 //CreateRouter inits a router given a VPC stack
@@ -33,6 +43,7 @@ func CreateRouter(stack *l2.Stack, id string) (*Router, error) {
 		Veths:    map[string]netlink.Link{},
 		stack:    stack,
 		iptChain: stack.VPCID,
+		subnets:  map[string]*Subnet{},
 	}
 
 	ns, err := createNetNS(fmt.Sprintf("r-%s", id))
@@ -58,6 +69,7 @@ func (r *Router) init() error {
 	r.CreateVeth(r.ExtBr, exID, "eth0", "any")
 
 	r.Exec(func() error {
+		//TODO(tcfw) maybe use DHCP?
 		//External
 		eth0, _ := netlink.LinkByName("eth0")
 		extNetwork, _ := netlink.ParseIPNet("192.168.122.254/24")
@@ -81,14 +93,42 @@ func (r *Router) init() error {
 
 	r.EnableNATOn("eth0")
 
-	intIP, _ := netlink.ParseIPNet("10.4.0.1/24")
-	r.AddSubnet(intIP)
+	_, cidr, _ := net.ParseCIDR("10.4.0.0/24")
+	if err := r.AddSubnet(cidr, 5, true); err != nil {
+		r.Delete()
+		return err
+	}
 
 	return r.Exec(func() error {
 		id := fmt.Sprintf("r-%s", r.ID)
 		fmt.Printf("Router (%s) is up!\n", id)
 		return nil
 	})
+}
+
+//AddSubnet attaches a new interface listening to a cidr and optionally enables DHCP
+func (r *Router) AddSubnet(cidr *net.IPNet, vlan uint16, dhcp bool) error {
+	subnet, err := r.AddSubnetIFace(cidr, vlan)
+	if err != nil {
+		return fmt.Errorf("failed to add subnet iface: %s", err)
+
+	}
+
+	if dhcp {
+		go func() {
+			err := r.Exec(func() error {
+				dhcp, err := NewDHCPv4Server(subnet.vethPeer, cidr, []net.IP{net.ParseIP("1.1.1.1")})
+				if err != nil {
+					return err
+				}
+				return dhcp.DHCPV4OnSubnet()
+			})
+			if err != nil {
+				fmt.Println(err)
+			}
+		}()
+	}
+	return nil
 }
 
 //EnableForwarding turns on ip forwarding via sysctl for packet routing
@@ -113,10 +153,10 @@ func (r *Router) EnableNATOn(iface string) error {
 	})
 }
 
-//AddSubnet creates a new veth pair and adds a specific subnet to it
+//AddSubnetIFace creates a new veth pair and adds a specific subnet to it
 //The veth will come up with a specific mac address based on the number
 // of subnets already created - see subnetMacs()
-func (r *Router) AddSubnet(subnet *net.IPNet) (netlink.Link, error) {
+func (r *Router) AddSubnetIFace(ipnet *net.IPNet, innerVlan uint16) (*Subnet, error) {
 	c := len(r.Veths)
 	ethID := fmt.Sprintf("eth%d", c)
 	id := fmt.Sprintf("r-%s-%d", r.ID, c)
@@ -128,13 +168,27 @@ func (r *Router) AddSubnet(subnet *net.IPNet) (netlink.Link, error) {
 		return nil, err
 	}
 
+	netlink.BridgeVlanDel(veth, 1, true, true, false, false)
+
+	if err := netlink.BridgeVlanAdd(veth, innerVlan, true, true, false, false); err != nil {
+		return nil, fmt.Errorf("Failed to add VLAN to veth: %s", err)
+	}
+
 	err = r.Exec(func() error {
 		eth, _ := netlink.LinkByName(ethID)
-		netlink.AddrAdd(eth, &netlink.Addr{IPNet: subnet})
+		addr, _ := cidr.Host(ipnet, 1)
+		addrNet := &net.IPNet{IP: addr, Mask: ipnet.Mask}
+		netlink.AddrAdd(eth, &netlink.Addr{IPNet: addrNet})
 		return netlink.LinkSetUp(eth)
 	})
 
-	return veth, err
+	routerEth := r.Veths[id].(*netlink.Veth).PeerName
+
+	subn := &Subnet{id: id, iface: veth, vethPeer: routerEth, vlan: innerVlan, network: ipnet}
+
+	r.subnets[id] = subn
+
+	return subn, err
 }
 
 //Ifup set the link into the 'up' state
@@ -154,6 +208,7 @@ func (r *Router) Ifup(iface string) error {
 func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string, hwaddr string) (netlink.Link, error) {
 	la := netlink.NewLinkAttrs()
 	la.Name = name
+	la.MTU = 1000
 
 	veth := &netlink.Veth{
 		LinkAttrs: la,

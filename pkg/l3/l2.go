@@ -11,7 +11,7 @@ import (
 //L2APIToStack converts the l2-agent API stack into the more useful stack
 func L2APIToStack(l2Stack *l2API.Stack) (*l2.Stack, error) {
 	stack := &l2.Stack{
-		VPCID: l2Stack.VpcID,
+		VPCID: l2Stack.VpcId,
 	}
 
 	br, err := netlink.LinkByIndex(int(l2Stack.BridgeLinkIndex))

@@ -2,12 +2,14 @@ syntax="proto3";
 
 package vpc.l2;
 
+option go_package = "l2";
+
 message StackRequest {
 	int32 vpc_id = 1;
 }
 
 message Stack {
-	int32 vpcID = 1;
+	int32 vpc_id = 1;
 	string bridge_link_name = 2;
 	int32 bridge_link_index = 3;
 	string vtep_link_name = 4;
@@ -39,13 +41,7 @@ message StackChange {
 message NicRequest {
 	int32 vpc_id = 1;
 	string id = 2;
-	
-	enum NicType {
-		TAP = 0;
-		MACVTAP = 1;
-	}
-	
-	NicType type = 3;
+	uint32 subnet_vlan_id = 3;
 }
 
 message Nic {
@@ -54,6 +50,7 @@ message Nic {
 	string id = 3;
 	string name = 4;
 	int32 index = 5;
+	uint32 vlan = 6;
 }
 
 message NicStatusResponse {
@@ -72,4 +69,5 @@ service L2Service {
 	rpc AddNIC(NicRequest) returns (Nic) {};
 	rpc DeleteNIC(Nic) returns (Empty) {};
 	rpc NICStatus(Nic) returns (NicStatusResponse) {};
+	// rpc UpdateNIC(NicRequest) returns (Nic) {};
 }

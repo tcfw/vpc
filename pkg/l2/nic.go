@@ -10,12 +10,23 @@ const (
 	nicPattern = "n-%s"
 )
 
+type VNic struct {
+	id   string
+	vlan uint16
+	link netlink.Link
+}
+
 //CreateNIC creates a new tap device attached to a VPC bridge
 //NOTE: this type of NIC can really only be suitable for containers
 //TODO(tcfw) create new functio to generate macvtap
-func CreateNIC(stack *Stack, id string) (netlink.Link, error) {
+func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error) {
+	if subnetVlan > 4096 {
+		return nil, fmt.Errorf("subnet out of range")
+	}
+
 	la := netlink.NewLinkAttrs()
 	la.Name = fmt.Sprintf(nicPattern, id)
+	la.MTU = 1000
 	nic := &netlink.Tuntap{
 		LinkAttrs: la,
 		Mode:      netlink.TUNTAP_MODE_TAP,
@@ -28,7 +39,17 @@ func CreateNIC(stack *Stack, id string) (netlink.Link, error) {
 		return nil, fmt.Errorf("Failed to set master: %s", err)
 	}
 
-	err := netlink.LinkSetUp(nic)
+	if err := netlink.BridgeVlanAdd(nic, subnetVlan, true, true, false, false); err != nil {
+		return nil, fmt.Errorf("Failed to add VLAN to nic: %s", err)
+	}
+
+	if err := netlink.LinkSetUp(nic); err != nil {
+		return nic, err
+	}
+
+	err := UpdateVTEPVlans(stack)
+
+	stack.Nics[id] = &VNic{id: id, vlan: subnetVlan, link: nic}
 
 	return nic, err
 }
@@ -75,5 +96,13 @@ func DeleteNIC(stack *Stack, id string) error {
 		return err
 	}
 
-	return netlink.LinkDel(nic)
+	if _, ok := stack.Nics[id]; ok {
+		delete(stack.Nics, id)
+	}
+
+	if err := netlink.LinkDel(nic); err != nil {
+		return err
+	}
+
+	return UpdateVTEPVlans(stack)
 }
