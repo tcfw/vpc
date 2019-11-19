@@ -21,7 +21,7 @@ Each VM, namespace or container is connected to a Linux bridge (with VLAN filter
 VxLAN learning is disabled by default. Learning is derived from an ML-BGP-L2VPN-EVPN client (via [frr](https://github.com/FRRouting/frr)) on each compute host and route reflectors on management hosts. 
 
 ## Segregation
-Each 'tenant' is separated by VxLAN VNI's and each Subnet is protected via inner VLAN on a Linux bridge per tenant. 
+Each 'tenant' is separated by VxLAN VNI's and each Subnet is protected via inner VLAN tagging on a Linux bridge per tenant. 
 
 # Agents
 ## L2
