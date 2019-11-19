@@ -1,5 +1,8 @@
 # VPC
-Creates simple VxLAN based VPC's using Go & Linux netlinks & network namespaces
+Create simple VxLAN based VPC's written in (mostly) Go using Linux bridges/netlinks, iptables & network namespaces!
+
+### Why?
+For fun and to learn!
 
 # Schematic
 ![vpc](./docs/res/vpc.jpg "VPC")
