@@ -170,7 +170,7 @@ func (s *Server) SubscribeL2Updates(vpcID int32) {
 }
 
 func (s *Server) handleVTEPPoll(vpcID uint32) {
-	log.Printf("attempt to find vxlan vtep links")
+	// log.Printf("attempt to find vxlan vtep links")
 	if err := s.bgp.ApplyVTEPAD(vpcID); err != nil {
 		log.Printf("VTEP linking failed: %s", err)
 	}

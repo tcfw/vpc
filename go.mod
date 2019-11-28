@@ -13,6 +13,7 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/golang/protobuf v1.3.2
 	github.com/insomniacslk/dhcp v0.0.0-20191112140002-c05874014012
+	github.com/juliengk/go-netfilter v0.0.0-20190717112259-40a8b7fb5b5a
 	github.com/lib/pq v1.2.0
 	github.com/lorenzosaino/go-sysctl v0.1.0
 	github.com/osrg/gobgp v2.0.0+incompatible

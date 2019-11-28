@@ -226,7 +226,7 @@ func (rbgp *BGPSpeak) updateASNPolicy() {
 
 //RegisterMacIP adds a Type-2 EVPN route to a local mac/ip
 func (rbgp *BGPSpeak) RegisterMacIP(vni uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error {
-	log.Printf("REGISTER MAC: %+v %+v %+v\n", vni, vlan, mac)
+	log.Printf("REGISTER MAC: %+v %+v %+v %+v\n", vni, vlan, mac, ip)
 
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
 
@@ -244,7 +244,7 @@ func (rbgp *BGPSpeak) RegisterMacIP(vni uint32, vlan uint32, mac net.HardwareAdd
 
 //DeregisterMacIP removes the Type-2 EVPN route to a local mac/ip
 func (rbgp *BGPSpeak) DeregisterMacIP(vni uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error {
-	log.Printf("DEREG MAC: %+v %+v %+v\n", vni, vlan, mac)
+	log.Printf("DEREG MAC: %+v %+v %+v %+v\n", vni, vlan, mac, ip)
 
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
 

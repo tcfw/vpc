@@ -58,6 +58,8 @@ github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANyt
 github.com/insomniacslk/dhcp v0.0.0-20191112140002-c05874014012 h1:FPWfO4cQp0BS5WKI9Yoak1IlPNU9IUzGUmFZEfVG7V4=
 github.com/insomniacslk/dhcp v0.0.0-20191112140002-c05874014012/go.mod h1:CfMdguCK66I5DAUJgGKyNz8aB6vO5dZzkm9Xep6WGvw=
 github.com/json-iterator/go v1.1.6/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCVDaaPEHmU=
+github.com/juliengk/go-netfilter v0.0.0-20190717112259-40a8b7fb5b5a h1:2EBKFuL3u1b2XqeTeXiPHVuIUMdMH4QeBs8T2SQ4Ml0=
+github.com/juliengk/go-netfilter v0.0.0-20190717112259-40a8b7fb5b5a/go.mod h1:ucbee0vdOg6uipiOH9dYsIZMTPQ2SSttFtuE6Ks0QKs=
 github.com/julienschmidt/httprouter v1.2.0/go.mod h1:SYymIcj16QtmaHHD7aYtjjsJG7VTCxuUUipMqKk8s4w=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
 github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515/go.mod h1:+0opPa2QZZtGFBFZlji/RkVcI2GknAs/DXo4wKdlNEc=

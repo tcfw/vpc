@@ -103,6 +103,10 @@ func (r *Router) init() error {
 
 	r.EnableNATOn("eth0")
 
+	r.Exec(func() error {
+		return r.SetDefaultFWRules()
+	})
+
 	_, cidr, _ := net.ParseCIDR("10.4.0.1/24")
 	if err := r.AddSubnet(cidr, 5, true); err != nil {
 		r.Delete()
@@ -293,12 +297,14 @@ func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string
 //Delete deletes all attached veth pairs and unbinds+deletes the netns
 func (r *Router) Delete() error {
 	for _, subnet := range r.subnets {
+		addr, _ := cidr.Host(subnet.network, 1)
+
 		if _, err := r.l2.DeleteNIC(context.Background(), &l2api.Nic{
 			Id:    subnet.id[2:], //exclude "n-..." for l2 id refs
 			Index: int32(subnet.iface.Attrs().Index),
 			VpcId: r.VPCID,
 			Vlan:  uint32(subnet.vlan),
-			Ip:    subnet.network.IP.String(),
+			Ip:    addr.String(),
 		}); err != nil {
 			log.Println(err)
 		}
