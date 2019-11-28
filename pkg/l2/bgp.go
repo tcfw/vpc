@@ -143,6 +143,7 @@ func (rbgp *BGPSpeak) RegisterVTEP(vni uint32) error {
 	return rbgp.addL2VPNEVPNNLRIPath(nlri)
 }
 
+//addL2VPNEVPNNLRIPath executes the add path with given NLRI
 func (rbgp *BGPSpeak) addL2VPNEVPNNLRIPath(nlri *any.Any) error {
 	family := &api.Family{
 		Afi:  api.Family_AFI_L2VPN,
@@ -160,6 +161,7 @@ func (rbgp *BGPSpeak) addL2VPNEVPNNLRIPath(nlri *any.Any) error {
 	return err
 }
 
+//pathPAttrs default path attrs used in BGP paths
 func (rbgp *BGPSpeak) pathPAttrs() []*any.Any {
 	attrOrigin, _ := ptypes.MarshalAny(&api.OriginAttribute{
 		Origin: 0,
@@ -192,6 +194,7 @@ func (rbgp *BGPSpeak) DeregisterVTEP(vni uint32) error {
 	return rbgp.delL2VPNEVPNNLRIPath(nlri)
 }
 
+//delL2VPNEVPNNLRIPath executes the delete path of given NLRI
 func (rbgp *BGPSpeak) delL2VPNEVPNNLRIPath(nlri *any.Any) error {
 	family := &api.Family{
 		Afi:  api.Family_AFI_L2VPN,
@@ -207,6 +210,7 @@ func (rbgp *BGPSpeak) delL2VPNEVPNNLRIPath(nlri *any.Any) error {
 	})
 }
 
+//updateASNPolicy updates the defined ASN policy with all known VNIs
 func (rbgp *BGPSpeak) updateASNPolicy() {
 
 	list := []string{}

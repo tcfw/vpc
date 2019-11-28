@@ -12,6 +12,7 @@ import (
 func (s *Server) Gc() {
 	for {
 		s.m.Lock()
+
 		for _, stack := range s.stacks {
 			if stack.Bridge == nil {
 				continue
@@ -40,8 +41,8 @@ func (s *Server) Gc() {
 				})
 			}
 		}
-		s.m.Unlock()
 
+		s.m.Unlock()
 		time.Sleep(5 * time.Second)
 	}
 }
@@ -61,6 +62,7 @@ func getBridgeLinks(brIndex int) ([]netlink.Link, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	for _, link := range links {
 		if link.Attrs().MasterIndex == brIndex && link.Type() != "vxlan" {
 			slaveLinks = append(slaveLinks, link)

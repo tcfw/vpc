@@ -8,7 +8,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/lorenzosaino/go-sysctl"
 	l2api "github.com/tcfw/vpc/pkg/api/v1/l2"
@@ -38,6 +37,7 @@ type Subnet struct {
 	id       string
 	vlan     uint16
 	iface    netlink.Link
+	ip       net.IP
 	network  *net.IPNet
 	vethPeer string
 	innerMac net.HardwareAddr
@@ -107,8 +107,10 @@ func (r *Router) init() error {
 		return r.SetDefaultFWRules()
 	})
 
-	_, cidr, _ := net.ParseCIDR("10.4.0.1/24")
-	if err := r.AddSubnet(cidr, 5, true); err != nil {
+	vlan := uint16(5)
+	ip, cidr, _ := net.ParseCIDR("10.4.0.1/24")
+
+	if err := r.AddSubnet(ip, cidr, vlan, true); err != nil {
 		r.Delete()
 		return err
 	}
@@ -116,11 +118,12 @@ func (r *Router) init() error {
 	go func() {
 		if err := r.Exec(func() error {
 			ns, _ := netns.Get()
-			r.bgp, _ = NewRouterBGP(pubIP.IP, uint32(r.stack.VPCID), []string{"192.168.122.1"})
+			peers := []string{"192.168.122.1"}
+			r.bgp, _ = NewRouterBGP(pubIP.IP, uint32(r.stack.VPCID), peers)
 			if err := r.bgp.Start(ns); err != nil {
 				log.Printf("Failed to start BGP: %s", err)
 			}
-			if err := r.bgp.AdvertSubnet(cidr); err != nil {
+			if err := r.bgp.AdvertSubnet(cidr, vlan); err != nil {
 				log.Printf("Failed to advertsie subnet: %s", err)
 			}
 
@@ -139,8 +142,8 @@ func (r *Router) init() error {
 }
 
 //AddSubnet attaches a new interface listening to a cidr and optionally enables DHCP
-func (r *Router) AddSubnet(cidr *net.IPNet, vlan uint16, dhcp bool) error {
-	subnet, err := r.AddSubnetIFace(cidr, vlan)
+func (r *Router) AddSubnet(ip net.IP, cidr *net.IPNet, vlan uint16, dhcp bool) error {
+	subnet, err := r.AddSubnetIFace(ip, cidr, vlan)
 	if err != nil {
 		return fmt.Errorf("failed to add subnet iface: %s", err)
 	}
@@ -148,7 +151,8 @@ func (r *Router) AddSubnet(cidr *net.IPNet, vlan uint16, dhcp bool) error {
 	if dhcp {
 		go func() {
 			err := r.Exec(func() error {
-				dhcp, err := NewDHCPv4Server(subnet.vethPeer, cidr, []net.IP{net.ParseIP("1.1.1.1")})
+				dns := []net.IP{net.ParseIP("1.1.1.1")}
+				dhcp, err := NewDHCPv4Server(subnet.vethPeer, cidr, dns)
 				if err != nil {
 					return err
 				}
@@ -187,7 +191,7 @@ func (r *Router) EnableNATOn(iface string) error {
 //AddSubnetIFace creates a new veth pair and adds a specific subnet to it
 //The veth will come up with a specific mac address based on the number
 // of subnets already created - see subnetMacs()
-func (r *Router) AddSubnetIFace(ipnet *net.IPNet, innerVlan uint16) (*Subnet, error) {
+func (r *Router) AddSubnetIFace(addr net.IP, ipnet *net.IPNet, innerVlan uint16) (*Subnet, error) {
 	c := len(r.Veths)
 	ethID := fmt.Sprintf("eth%d", c)
 	innerID := fmt.Sprintf("%s-%d", r.ID, c)
@@ -205,8 +209,6 @@ func (r *Router) AddSubnetIFace(ipnet *net.IPNet, innerVlan uint16) (*Subnet, er
 	}
 
 	var hwaddr net.HardwareAddr
-
-	addr, _ := cidr.Host(ipnet, 1)
 
 	err = r.Exec(func() error {
 		eth, _ := netlink.LinkByName(ethID)
@@ -231,7 +233,7 @@ func (r *Router) AddSubnetIFace(ipnet *net.IPNet, innerVlan uint16) (*Subnet, er
 
 	routerEth := r.Veths[id].(*netlink.Veth).PeerName
 
-	subn := &Subnet{id: id, iface: veth, vethPeer: routerEth, vlan: innerVlan, network: ipnet, innerMac: hwaddr}
+	subn := &Subnet{id: id, iface: veth, vethPeer: routerEth, vlan: innerVlan, ip: addr, network: ipnet, innerMac: hwaddr}
 
 	r.subnets[id] = subn
 
@@ -297,14 +299,12 @@ func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string
 //Delete deletes all attached veth pairs and unbinds+deletes the netns
 func (r *Router) Delete() error {
 	for _, subnet := range r.subnets {
-		addr, _ := cidr.Host(subnet.network, 1)
-
 		if _, err := r.l2.DeleteNIC(context.Background(), &l2api.Nic{
 			Id:    subnet.id[2:], //exclude "n-..." for l2 id refs
 			Index: int32(subnet.iface.Attrs().Index),
 			VpcId: r.VPCID,
 			Vlan:  uint32(subnet.vlan),
-			Ip:    addr.String(),
+			Ip:    subnet.ip.String(),
 		}); err != nil {
 			log.Println(err)
 		}

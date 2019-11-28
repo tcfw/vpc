@@ -57,6 +57,7 @@ github.com/inconshreveable/mousetrap v1.0.0 h1:Z8tu5sraLXCXIcARxBp/8cbvlwVa7Z1NH
 github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANytuPF1OarO4DADm73n8=
 github.com/insomniacslk/dhcp v0.0.0-20191112140002-c05874014012 h1:FPWfO4cQp0BS5WKI9Yoak1IlPNU9IUzGUmFZEfVG7V4=
 github.com/insomniacslk/dhcp v0.0.0-20191112140002-c05874014012/go.mod h1:CfMdguCK66I5DAUJgGKyNz8aB6vO5dZzkm9Xep6WGvw=
+github.com/insomniacslk/dhcp v0.0.0-20191120203056-ec0e0154d15c h1:Mniys+b20rXwubOZ2yMIswZjcDNsqfqvF61Gbx+ABKc=
 github.com/json-iterator/go v1.1.6/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCVDaaPEHmU=
 github.com/juliengk/go-netfilter v0.0.0-20190717112259-40a8b7fb5b5a h1:2EBKFuL3u1b2XqeTeXiPHVuIUMdMH4QeBs8T2SQ4Ml0=
 github.com/juliengk/go-netfilter v0.0.0-20190717112259-40a8b7fb5b5a/go.mod h1:ucbee0vdOg6uipiOH9dYsIZMTPQ2SSttFtuE6Ks0QKs=

@@ -29,8 +29,11 @@ func GetVTEP(vpcID int32) (netlink.Link, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	ifaceName := fmt.Sprintf(vtepPattern, vpcID)
+
 	for _, link := range links {
-		if link.Type() == "vxlan" && link.Attrs().Name == fmt.Sprintf(vtepPattern, vpcID) {
+		if link.Type() == "vxlan" && link.Attrs().Name == ifaceName {
 			return link, nil
 		}
 	}
@@ -182,20 +185,4 @@ func (s *Server) handleMacReq(vpcID uint32, hwaddr net.HardwareAddr) {
 		log.Printf("Failed to find VTEP for %+v %s\n", hwaddr, err)
 		return
 	}
-}
-
-//UpdateVLANTrunks reapplies required VLANs to VTEP for trunking
-func (s *Server) UpdateVLANTrunks(stack *Stack) error {
-	vlans := []uint16{}
-	for _, nic := range stack.Nics {
-		vlans = append(vlans, nic.vlan)
-
-		if err := netlink.BridgeVlanAdd(stack.Vtep, nic.vlan, false, false, false, false); err != nil {
-			return err
-		}
-	}
-
-	//TODO(tcfw) clean unused vlans from trunk
-
-	return nil
 }

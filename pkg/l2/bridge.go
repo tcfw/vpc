@@ -24,8 +24,11 @@ func GetVPCBridge(vpcID int32) (netlink.Link, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	ifaceName := fmt.Sprintf(vpcBridgePattern, vpcID)
+
 	for _, link := range links {
-		if link.Type() == "bridge" && link.Attrs().Name == fmt.Sprintf(vpcBridgePattern, vpcID) {
+		if link.Type() == "bridge" && link.Attrs().Name == ifaceName {
 			return link, nil
 		}
 	}

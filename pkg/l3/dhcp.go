@@ -76,6 +76,7 @@ func (rd *RouterDHCP) HandleV4(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHC
 	}
 }
 
+//handleDiscoveryRequest processes discovery and request packets
 func (rd *RouterDHCP) handleDiscoveryRequest(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4, replyType dhcpv4.MessageType) {
 	vmIP, err := rd.macToIP(m.ClientHWAddr)
 	if err != nil {
@@ -112,6 +113,7 @@ func (rd *RouterDHCP) handleDiscoveryRequest(conn net.PacketConn, peer net.Addr,
 	}
 }
 
+//sendDecline sends an DHCP decline based on a request
 func (rd *RouterDHCP) sendDecline(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4) {
 	mods := []dhcpv4.Modifier{
 		dhcpv4.WithMessageType(dhcpv4.MessageTypeDecline),
@@ -125,12 +127,14 @@ func (rd *RouterDHCP) sendDecline(conn net.PacketConn, peer net.Addr, m *dhcpv4.
 	conn.WriteTo(resp.ToBytes(), peer)
 }
 
+//dhcpOptions encaps default DHCP options
 func (rd *RouterDHCP) dhcpOptions() []dhcpv4.Modifier {
 	return []dhcpv4.Modifier{
 		dhcpv4.WithDNS(rd.dnsServers...),
 	}
 }
 
+//macToIP converts the originating mac address to the correct IP
 func (rd *RouterDHCP) macToIP(hwaddr net.HardwareAddr) (net.IP, error) {
 	//TODO(tcfw) link to hyper service
 	IP, err := cidr.Host(rd.subnet, 4)

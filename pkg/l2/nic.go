@@ -33,6 +33,7 @@ func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error)
 		LinkAttrs: la,
 		Mode:      netlink.TUNTAP_MODE_TAP,
 	}
+
 	if err := netlink.LinkAdd(nic); err != nil {
 		return nil, fmt.Errorf("Failed to add tap device: %s", err)
 	}
@@ -46,7 +47,7 @@ func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error)
 	}
 
 	if err := netlink.LinkSetUp(nic); err != nil {
-		return nic, err
+		return nic, fmt.Errorf("failed to set nic to up: %s", err)
 	}
 
 	err := UpdateVTEPVlans(stack)
@@ -60,7 +61,7 @@ func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error)
 func GetNIC(stack *Stack, id string) (netlink.Link, error) {
 	handle, err := netlink.NewHandle(netlink.FAMILY_ALL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could no get netlink handle: %s", err)
 	}
 	defer func() {
 		handle.Delete()
@@ -68,7 +69,7 @@ func GetNIC(stack *Stack, id string) (netlink.Link, error) {
 
 	links, err := handle.LinkList()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could no get netlink list: %s", err)
 	}
 	for _, link := range links {
 		if link.Attrs().Name == fmt.Sprintf(nicPattern, id) {

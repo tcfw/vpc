@@ -10,6 +10,7 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+//createNetNS creates a new network namespace and sets a name
 func createNetNS(name string) (netns.NsHandle, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -31,6 +32,7 @@ func createNetNS(name string) (netns.NsHandle, error) {
 	return routerNetNs, nil
 }
 
+//setNSName sets a name for the netns which can be accessible via 'ip netns' commands
 func setNSName(name string) error {
 	p := path.Join("/var/run/netns/", name)
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL, 0444)
@@ -45,6 +47,7 @@ func setNSName(name string) error {
 	return nil
 }
 
+//unbindNSName removes the mount created from setNSName
 func unbindNSName(name string) error {
 	p := path.Join("/var/run/netns/", name)
 	if err := syscall.Unmount(p, 0); err != nil {
@@ -54,6 +57,8 @@ func unbindNSName(name string) error {
 	return os.Remove(p)
 }
 
+//execInNetNs switches to the specified netns and executes the closure
+//WARNING CANNOT EXECUTE WITH GOROUTINES INSIDE THE CLOSURE
 func execInNetNs(ns netns.NsHandle, fn func() error) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

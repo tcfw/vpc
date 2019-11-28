@@ -376,6 +376,7 @@ func (s *Server) NICStatus(ctx context.Context, req *l2API.Nic) (*l2API.NicStatu
 	return resp, nil
 }
 
+//formatToAPIStack converts the local l2 stack to an API stack
 func formatToAPIStack(stack *Stack) *l2API.Stack {
 	APIStack := &l2API.Stack{
 		VpcId: stack.VPCID,
@@ -394,6 +395,7 @@ func formatToAPIStack(stack *Stack) *l2API.Stack {
 	return APIStack
 }
 
+//formatToAPINic converts the local NIC to an API NIC
 func formatToAPINic(stack *Stack, link netlink.Link, id string) *l2API.Nic {
 	vlan := getNicVlans(int32(link.Attrs().Index))
 
@@ -407,6 +409,7 @@ func formatToAPINic(stack *Stack, link netlink.Link, id string) *l2API.Nic {
 	}
 }
 
+//getStackStatus calculates the VPC stack status with interfaces and their 'up' status
 func getStackStatus(stack *Stack) *l2API.StackStatusResponse {
 	status := &l2API.StackStatusResponse{}
 
@@ -431,6 +434,7 @@ func getStackStatus(stack *Stack) *l2API.StackStatusResponse {
 	return status
 }
 
+//logChange broadcasts stack changes to all subscribers
 func (s *Server) logChange(change *l2API.StackChange) {
 	for _, ch := range s.watches {
 		go func(ch chan l2API.StackChange) {
@@ -439,6 +443,7 @@ func (s *Server) logChange(change *l2API.StackChange) {
 	}
 }
 
+//fetchStack finds the stack for VPC from local or recreates it
 func (s *Server) fetchStack(vpcID int32) (*Stack, error) {
 	stack, ok := s.stacks[vpcID]
 

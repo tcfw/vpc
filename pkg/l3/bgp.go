@@ -86,10 +86,6 @@ func (rbgp *RouterBGP) Start(ns netns.NsHandle) error {
 		return err
 	}
 
-	// if _, err := rbgp.s.MonitorPeer(ctx, &api.MonitorPeerRequest{}, func(p *api.Peer) { rbgp.peerChange(p) }); err != nil {
-	// 	return err
-	// }
-
 	rbgp.s.AddDefinedSet(ctx, &api.AddDefinedSetRequest{
 		DefinedSet: &api.DefinedSet{
 			Name:     "ASN",
@@ -100,29 +96,29 @@ func (rbgp *RouterBGP) Start(ns netns.NsHandle) error {
 
 	for _, peer := range rbgp.peers {
 		n := &api.Peer{
-			ApplyPolicy: &api.ApplyPolicy{
-				InPolicy: &api.PolicyAssignment{
-					// default import only vni
-					Policies: []*api.Policy{
-						&api.Policy{
-							// allow only with matching community
-							Statements: []*api.Statement{
-								&api.Statement{
-									Conditions: &api.Conditions{
-										AsPathSet: &api.MatchSet{MatchType: api.MatchType_ANY, Name: "ASN"},
-									},
-									Actions: &api.Actions{RouteAction: api.RouteAction_ACCEPT},
-								},
-							},
-						},
-					},
-					DefaultAction: api.RouteAction_REJECT,
-				},
-				ExportPolicy: &api.PolicyAssignment{
-					//default export all accept
-					DefaultAction: api.RouteAction_ACCEPT,
-				},
-			},
+			// ApplyPolicy: &api.ApplyPolicy{
+			// 	InPolicy: &api.PolicyAssignment{
+			// 		// default import only vni
+			// 		Policies: []*api.Policy{
+			// 			&api.Policy{
+			// 				// allow only with matching community
+			// 				Statements: []*api.Statement{
+			// 					&api.Statement{
+			// 						Conditions: &api.Conditions{
+			// 							AsPathSet: &api.MatchSet{MatchType: api.MatchType_ANY, Name: "ASN"},
+			// 						},
+			// 						Actions: &api.Actions{RouteAction: api.RouteAction_ACCEPT},
+			// 					},
+			// 				},
+			// 			},
+			// 		},
+			// 		DefaultAction: api.RouteAction_REJECT,
+			// 	},
+			// 	ExportPolicy: &api.PolicyAssignment{
+			// 		//default export all accept
+			// 		DefaultAction: api.RouteAction_ACCEPT,
+			// 	},
+			// },
 			Conf: &api.PeerConf{
 				NeighborAddress: peer,
 				PeerAs:          65000,
@@ -158,13 +154,13 @@ func (rbgp *RouterBGP) Start(ns netns.NsHandle) error {
 }
 
 //AdvertSubnet adds a subnet to the bgp server within the vpc community
-func (rbgp *RouterBGP) AdvertSubnet(subnet *net.IPNet) error {
+func (rbgp *RouterBGP) AdvertSubnet(subnet *net.IPNet, vlan uint16) error {
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.pubIP.String(), Assigned: rbgp.vni})
 
 	maskSize, _ := subnet.Mask.Size()
 	nlri, _ := ptypes.MarshalAny(&api.EVPNIPPrefixRoute{
 		Rd:          rd,
-		EthernetTag: 0, //TODO(tcfw) use subnet vlan
+		EthernetTag: uint32(vlan),
 		Esi:         &api.EthernetSegmentIdentifier{Type: 0, Value: []byte("single-homed")},
 		IpPrefix:    subnet.IP.String(),
 		IpPrefixLen: uint32(maskSize),
@@ -208,8 +204,4 @@ func (rbgp *RouterBGP) AdvertSubnet(subnet *net.IPNet) error {
 //ASN provides the privte ASN of the vpc
 func (rbgp *RouterBGP) ASN() uint32 {
 	return asPrefix + rbgp.vni
-}
-
-func (rbgp *RouterBGP) peerChange(p *api.Peer) {
-	// log.Printf("%v\n", p)
 }
