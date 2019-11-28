@@ -1,7 +1,9 @@
 package l3
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/lorenzosaino/go-sysctl"
+	l2api "github.com/tcfw/vpc/pkg/api/v1/l2"
 	"github.com/tcfw/vpc/pkg/l2"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -22,25 +25,31 @@ type Router struct {
 	Veths map[string]netlink.Link
 	ExtBr *netlink.Bridge
 
+	l2       l2api.L2ServiceClient
 	stack    *l2.Stack
 	iptChain int32
 	subnets  map[string]*Subnet
+
+	bgp *RouterBGP
 }
 
+//Subnet contains info on a subnet and related interfaces
 type Subnet struct {
 	id       string
 	vlan     uint16
 	iface    netlink.Link
 	network  *net.IPNet
 	vethPeer string
+	innerMac net.HardwareAddr
 }
 
 //CreateRouter inits a router given a VPC stack
-func CreateRouter(stack *l2.Stack, id string) (*Router, error) {
+func CreateRouter(l2 l2api.L2ServiceClient, stack *l2.Stack, id string) (*Router, error) {
 	router := &Router{
 		VPCID:    stack.VPCID,
 		ID:       id,
 		Veths:    map[string]netlink.Link{},
+		l2:       l2,
 		stack:    stack,
 		iptChain: stack.VPCID,
 		subnets:  map[string]*Subnet{},
@@ -65,6 +74,8 @@ func (r *Router) init() error {
 	r.Ifup("lo")
 	r.EnableForwarding()
 
+	pubIP, _ := netlink.ParseIPNet("192.168.122.254/24")
+
 	exID := fmt.Sprintf("rx-%s", r.ID)
 	r.CreateVeth(r.ExtBr, exID, "eth0", "any")
 
@@ -72,8 +83,7 @@ func (r *Router) init() error {
 		//TODO(tcfw) maybe use DHCP?
 		//External
 		eth0, _ := netlink.LinkByName("eth0")
-		extNetwork, _ := netlink.ParseIPNet("192.168.122.254/24")
-		netlink.AddrAdd(eth0, &netlink.Addr{IPNet: extNetwork})
+		netlink.AddrAdd(eth0, &netlink.Addr{IPNet: pubIP})
 		netlink.LinkSetUp(eth0)
 
 		//Use L4 hashing for ECMP
@@ -87,17 +97,35 @@ func (r *Router) init() error {
 				Gw:        net.IPv4(192, 168, 122, 1),
 			},
 		}})
-
 		return nil
+
 	})
 
 	r.EnableNATOn("eth0")
 
-	_, cidr, _ := net.ParseCIDR("10.4.0.0/24")
+	_, cidr, _ := net.ParseCIDR("10.4.0.1/24")
 	if err := r.AddSubnet(cidr, 5, true); err != nil {
 		r.Delete()
 		return err
 	}
+
+	go func() {
+		if err := r.Exec(func() error {
+			ns, _ := netns.Get()
+			r.bgp, _ = NewRouterBGP(pubIP.IP, uint32(r.stack.VPCID), []string{"192.168.122.1"})
+			if err := r.bgp.Start(ns); err != nil {
+				log.Printf("Failed to start BGP: %s", err)
+			}
+			if err := r.bgp.AdvertSubnet(cidr); err != nil {
+				log.Printf("Failed to advertsie subnet: %s", err)
+			}
+
+			select {}
+		}); err != nil {
+			r.Delete()
+			log.Fatal(err)
+		}
+	}()
 
 	return r.Exec(func() error {
 		id := fmt.Sprintf("r-%s", r.ID)
@@ -111,7 +139,6 @@ func (r *Router) AddSubnet(cidr *net.IPNet, vlan uint16, dhcp bool) error {
 	subnet, err := r.AddSubnetIFace(cidr, vlan)
 	if err != nil {
 		return fmt.Errorf("failed to add subnet iface: %s", err)
-
 	}
 
 	if dhcp {
@@ -159,9 +186,8 @@ func (r *Router) EnableNATOn(iface string) error {
 func (r *Router) AddSubnetIFace(ipnet *net.IPNet, innerVlan uint16) (*Subnet, error) {
 	c := len(r.Veths)
 	ethID := fmt.Sprintf("eth%d", c)
-	id := fmt.Sprintf("r-%s-%d", r.ID, c)
-
-	// macs := subnetMacs()
+	innerID := fmt.Sprintf("%s-%d", r.ID, c)
+	id := fmt.Sprintf("n-%s", innerID)
 
 	veth, err := r.CreateVeth(r.stack.Bridge, id, ethID, "any")
 	if err != nil {
@@ -174,17 +200,34 @@ func (r *Router) AddSubnetIFace(ipnet *net.IPNet, innerVlan uint16) (*Subnet, er
 		return nil, fmt.Errorf("Failed to add VLAN to veth: %s", err)
 	}
 
+	var hwaddr net.HardwareAddr
+
+	addr, _ := cidr.Host(ipnet, 1)
+
 	err = r.Exec(func() error {
 		eth, _ := netlink.LinkByName(ethID)
-		addr, _ := cidr.Host(ipnet, 1)
+		hwaddr = eth.Attrs().HardwareAddr
 		addrNet := &net.IPNet{IP: addr, Mask: ipnet.Mask}
 		netlink.AddrAdd(eth, &netlink.Addr{IPNet: addrNet})
 		return netlink.LinkSetUp(eth)
 	})
 
+	log.Printf("MAC: %s", hwaddr)
+
+	if _, err := r.l2.AddNIC(context.Background(), &l2api.NicRequest{
+		Id:            innerID,
+		VpcId:         r.VPCID,
+		SubnetVlanId:  uint32(innerVlan),
+		ManuallyAdded: true,
+		ManualHwaddr:  hwaddr.String(),
+		Ip:            addr.String(),
+	}); err != nil {
+		log.Println(err)
+	}
+
 	routerEth := r.Veths[id].(*netlink.Veth).PeerName
 
-	subn := &Subnet{id: id, iface: veth, vethPeer: routerEth, vlan: innerVlan, network: ipnet}
+	subn := &Subnet{id: id, iface: veth, vethPeer: routerEth, vlan: innerVlan, network: ipnet, innerMac: hwaddr}
 
 	r.subnets[id] = subn
 
@@ -249,6 +292,18 @@ func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string
 
 //Delete deletes all attached veth pairs and unbinds+deletes the netns
 func (r *Router) Delete() error {
+	for _, subnet := range r.subnets {
+		if _, err := r.l2.DeleteNIC(context.Background(), &l2api.Nic{
+			Id:    subnet.id[2:], //exclude "n-..." for l2 id refs
+			Index: int32(subnet.iface.Attrs().Index),
+			VpcId: r.VPCID,
+			Vlan:  uint32(subnet.vlan),
+			Ip:    subnet.network.IP.String(),
+		}); err != nil {
+			log.Println(err)
+		}
+	}
+
 	for _, veth := range r.Veths {
 		netlink.LinkDel(veth)
 	}

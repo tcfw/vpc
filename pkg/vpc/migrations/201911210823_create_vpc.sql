@@ -1,0 +1,9 @@
+CREATE TABLE vpcs (
+	id SERIAL PRIMARY KEY,
+	account_id INT NOT NULL,
+	cidr INET NOT NULL,
+	asn INT NOT NULL,
+	vni INT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+	metadata JSONB
+);

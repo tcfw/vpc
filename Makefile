@@ -12,10 +12,15 @@ l3:
 l2:
 	${GO_BUILD} -o ./build/l2-agent ./cmd/l2agent
 
+.PHONY: vpc
+vpc:
+	${GO_BUILD} -o ./build/vpc ./cmd/vpc
+
 .PHONY: strip
 strip:
 	strip --strip-unneeded ./build/l2-agent
 	strip --strip-unneeded ./build/l3-agent
+	strip --strip-unneeded ./build/vpc
 
 protos:
 	./scripts/protoc-gen.sh
@@ -23,3 +28,4 @@ protos:
 clean:
 	rm -f ./build/l3-agent
 	rm -f ./build/l2-agent
+	rm -f ./build/vpc

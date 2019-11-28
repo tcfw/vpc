@@ -51,6 +51,9 @@
         "vlan": {
           "type": "integer",
           "format": "int64"
+        },
+        "ip": {
+          "type": "string"
         }
       }
     },

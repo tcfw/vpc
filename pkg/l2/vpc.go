@@ -30,7 +30,7 @@ func CreateVPCStack(vpcID int32, vtepDev string) (*Stack, error) {
 
 //GetVPCStack finds the linux bridge and vtep assocated with the VPC id
 func GetVPCStack(vpcID int32) (*Stack, error) {
-	stack := &Stack{VPCID: vpcID}
+	stack := &Stack{VPCID: vpcID, Nics: map[string]*VNic{}}
 
 	br, err := GetVPCBridge(vpcID)
 	if err != nil {

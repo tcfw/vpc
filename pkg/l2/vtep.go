@@ -2,6 +2,11 @@ package l2
 
 import (
 	"fmt"
+	"log"
+	"net"
+	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/vishvananda/netlink"
 )
@@ -71,7 +76,10 @@ func CreateVTEP(vpcID int32, bridge *netlink.Bridge, dev string) (*netlink.Vxlan
 		LinkAttrs:    la,
 		VxlanId:      int(vpcID),
 		VtepDevIndex: devLink.Attrs().Index,
+		L2miss:       false, //TODO(tcfw) inject l2 req to FDB
+		L3miss:       false, //TODO(tcfw) track l3 and response to neighbor reqs
 		Learning:     false,
+		Proxy:        false,
 		Port:         4789,
 	}
 
@@ -103,3 +111,91 @@ func DeleteVTEP(vpcID int32) error {
 	return netlink.LinkDel(vtep)
 }
 
+//SubscribeL2Updates monitors for subscription errors
+func (s *Server) SubscribeL2Updates(vpcID int32) {
+	vtepLink, err := GetVTEP(vpcID)
+	if err != nil {
+		return
+	}
+
+	vtep := vtepLink.(*netlink.Vxlan)
+
+	go func() {
+		ticker := time.Tick(10 * time.Second)
+		for {
+			select {
+			case <-ticker:
+				s.handleVTEPPoll(uint32(vpcID))
+				break
+			}
+		}
+	}()
+
+	if vtep.Proxy {
+		updateCh := make(chan netlink.NeighUpdate)
+		doneCh := make(chan struct{})
+
+		if err := netlink.NeighSubscribe(updateCh, doneCh); err != nil {
+			log.Println(err)
+			return
+		}
+
+		for {
+			change, ok := <-updateCh
+			if !ok {
+				break
+			}
+			if change.LinkIndex == vtep.Attrs().Index {
+				//Only interested in neighbor requests
+				if change.Type != unix.RTM_GETNEIGH {
+					continue
+				}
+
+				log.Printf("%++v\n", change)
+
+				if change.State == netlink.NUD_STALE && change.LLIPAddr == nil {
+					if change.IP == nil && change.HardwareAddr.String() == net.HardwareAddr(nil).String() {
+						s.handleVTEPPoll(uint32(vpcID))
+					} else if change.IP == nil {
+						s.handleMacReq(uint32(vpcID), change.HardwareAddr)
+					}
+				} else if change.State == netlink.NUD_FAILED || change.State == netlink.NUD_NOARP {
+					log.Println("failed arp")
+				} else {
+					log.Println("unknown neigh state")
+				}
+			}
+		}
+	}
+}
+
+func (s *Server) handleVTEPPoll(vpcID uint32) {
+	log.Printf("attempt to find vxlan vtep links")
+	if err := s.bgp.ApplyVTEPAD(vpcID); err != nil {
+		log.Printf("VTEP linking failed: %s", err)
+	}
+}
+
+func (s *Server) handleMacReq(vpcID uint32, hwaddr net.HardwareAddr) {
+	ip, err := s.bgp.LookupMac(uint32(vpcID), hwaddr)
+	if err != nil || ip == nil {
+		log.Printf("Failed to find VTEP for %+v %s\n", hwaddr, err)
+		return
+	}
+}
+
+//UpdateVLANTrunks reapplies required VLANs to VTEP for trunking
+func (s *Server) UpdateVLANTrunks(stack *Stack) error {
+	vlans := []uint16{}
+	for _, nic := range stack.Nics {
+		vlans = append(vlans, nic.vlan)
+
+		if err := netlink.BridgeVlanAdd(stack.Vtep, nic.vlan, false, false, false, false); err != nil {
+			return err
+		}
+	}
+
+	//TODO(tcfw) clean unused vlans from trunk
+
+	return nil
+}

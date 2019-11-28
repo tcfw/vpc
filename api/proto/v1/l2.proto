@@ -42,6 +42,9 @@ message NicRequest {
 	int32 vpc_id = 1;
 	string id = 2;
 	uint32 subnet_vlan_id = 3;
+	bool manually_added = 4;
+	string manual_hwaddr = 5;
+	string ip = 6;
 }
 
 message Nic {
@@ -51,6 +54,7 @@ message Nic {
 	string name = 4;
 	int32 index = 5;
 	uint32 vlan = 6;
+	string ip = 7;
 }
 
 message NicStatusResponse {

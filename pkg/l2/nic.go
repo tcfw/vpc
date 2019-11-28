@@ -10,10 +10,12 @@ const (
 	nicPattern = "n-%s"
 )
 
+//VNic holds the state of known NICs
 type VNic struct {
-	id   string
-	vlan uint16
-	link netlink.Link
+	id     string
+	vlan   uint16
+	link   netlink.Link
+	manual bool
 }
 
 //CreateNIC creates a new tap device attached to a VPC bridge

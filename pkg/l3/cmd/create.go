@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -37,16 +36,16 @@ func NewCreateCmd() *cobra.Command {
 				}
 				defer conn.Close()
 
-				cli := l2API.NewL2ServiceClient(conn)
+				l2cli := l2API.NewL2ServiceClient(conn)
 
 				ctx := context.Background()
 
 				var resp *l2API.StackResponse
 
-				resp, err = cli.GetStack(ctx, &l2API.StackRequest{VpcId: int32(vpcID)})
+				resp, err = l2cli.GetStack(ctx, &l2API.StackRequest{VpcId: int32(vpcID)})
 				if err != nil {
 					if strings.Contains(err.Error(), "Stack not created") {
-						resp, err = cli.AddStack(ctx, &l2API.StackRequest{VpcId: int32(vpcID)})
+						resp, err = l2cli.AddStack(ctx, &l2API.StackRequest{VpcId: int32(vpcID)})
 						if err != nil {
 							log.Println("Failed to create stack: ", err)
 						}
@@ -64,7 +63,7 @@ func NewCreateCmd() *cobra.Command {
 
 				id := l3.NewID()
 
-				r, err := l3.CreateRouter(stack, id)
+				r, err := l3.CreateRouter(l2cli, stack, id)
 				if err != nil {
 					log.Println("Failed to create router: ", err)
 					return
@@ -74,14 +73,6 @@ func NewCreateCmd() *cobra.Command {
 				}()
 
 				fmt.Printf("Created Router %s on %d\n", r.ID, vpcID)
-
-				r.Exec(func() error {
-					ints, _ := net.Interfaces()
-					for _, int := range ints {
-						fmt.Printf("%v\n", int)
-					}
-					return nil
-				})
 			}
 
 			waitForExit()

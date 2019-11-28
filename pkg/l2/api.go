@@ -7,6 +7,8 @@ import (
 	"net"
 	"sync"
 
+	"golang.org/x/sys/unix"
+
 	l2API "github.com/tcfw/vpc/pkg/api/v1/l2"
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
@@ -23,6 +25,7 @@ func Serve(port uint) {
 
 	srv := NewServer()
 	go srv.Gc()
+	go srv.BGP()
 
 	l2API.RegisterL2ServiceServer(grpcServer, srv)
 	log.Println("Starting gRPC server")
@@ -34,6 +37,7 @@ type Server struct {
 	m       sync.Mutex
 	watches []chan l2API.StackChange
 	stacks  map[int32]*Stack
+	bgp     *BGPSpeak
 }
 
 //NewServer creates a new server instance
@@ -42,6 +46,55 @@ func NewServer() *Server {
 		watches: []chan l2API.StackChange{},
 		stacks:  map[int32]*Stack{},
 	}
+}
+
+//BGP starts the BGP speaker to advertise type-2 and type-3 EVPN routes
+func (s *Server) BGP() {
+	if s.bgp != nil {
+		return
+	}
+
+	vtepdev, err := netlink.LinkByName(vtepDev())
+	if err != nil {
+		log.Fatalf("Failed to find to vtep dev: %s", err)
+	}
+
+	ip4s, err := netlink.AddrList(vtepdev, unix.AF_INET)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	ip6s, err := netlink.AddrList(vtepdev, unix.AF_INET6)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	var rID net.IP
+
+	for _, ip4addr := range ip4s {
+		if !ip4addr.IP.IsLoopback() {
+			rID = ip4addr.IP
+			break
+		}
+	}
+
+	if rID == nil {
+		for _, ip6addr := range ip6s {
+			if !ip6addr.IP.IsLoopback() {
+				rID = ip6addr.IP
+				break
+			}
+		}
+	}
+
+	s.bgp, err = NewBGPSpeak(rID, bgpPeers())
+	if err != nil {
+		log.Fatalf("Failed to init BGP: %s", err)
+	}
+
+	if err := s.bgp.Start(); err != nil {
+		log.Fatalf("Failed to start BGP: %s", err)
+	}
+
 }
 
 //AddStack creates a new VPC stack
@@ -59,6 +112,15 @@ func (s *Server) AddStack(ctx context.Context, req *l2API.StackRequest) (*l2API.
 
 	stack, err := CreateVPCStack(req.VpcId, vtepdev)
 	if err != nil {
+		return nil, err
+	}
+
+	go s.SubscribeL2Updates(req.VpcId)
+
+	if err := s.bgp.RegisterVTEP(uint32(req.VpcId)); err != nil {
+		defer func() {
+			DeleteVPCStack(stack)
+		}()
 		return nil, err
 	}
 
@@ -178,8 +240,18 @@ func (s *Server) WatchStacks(_ *l2API.Empty, stream l2API.L2Service_WatchStacksS
 
 //AddNIC Add a new NIC to a VPC linux bridge
 func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic, error) {
-	if req.VpcId > 16777215 {
+	if req.VpcId > 16777215 || req.VpcId == 0 {
 		return nil, fmt.Errorf("VPC ID out of range")
+	}
+
+	if req.ManuallyAdded && req.ManualHwaddr == "" {
+		return nil, fmt.Errorf("manually created nics must provide a hwaddr")
+	} else if !req.ManuallyAdded && req.ManualHwaddr != "" {
+		return nil, fmt.Errorf("automatically created nics cannot supply manual hwaddrs")
+	}
+
+	if req.SubnetVlanId == 0 {
+		return nil, fmt.Errorf("vlan must be set and non-zero")
 	}
 
 	stack, err := s.fetchStack(req.VpcId)
@@ -190,13 +262,32 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 	ok, err := HasNIC(stack, req.Id)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create nic: %s", err)
-	} else if ok {
+	} else if ok && !req.ManuallyAdded {
 		return nil, fmt.Errorf("NIC already exists")
 	}
 
-	link, err := CreateNIC(stack, req.Id, uint16(req.SubnetVlanId))
-	if err != nil {
-		return nil, err
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	var link netlink.Link
+
+	if req.ManuallyAdded {
+		link, err = GetNIC(stack, req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find nic: %s", err)
+		}
+		s.stacks[req.VpcId].Nics[req.Id] = &VNic{id: req.Id, vlan: uint16(req.SubnetVlanId), link: link, manual: true}
+	} else {
+		link, err = CreateNIC(stack, req.Id, uint16(req.SubnetVlanId))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create nic: %s", err)
+		}
+	}
+
+	s.bgp.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, link.Attrs().HardwareAddr, net.ParseIP(req.Ip))
+
+	if err := s.UpdateVLANTrunks(stack); err != nil {
+		log.Printf("failed to update vlan trunk: %s", err)
 	}
 
 	s.logChange(&l2API.StackChange{
@@ -209,8 +300,12 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 
 //DeleteNIC Delete a NIC from a VPC linux bridge
 func (s *Server) DeleteNIC(ctx context.Context, req *l2API.Nic) (*l2API.Empty, error) {
-	if req.VpcId > 16777215 {
+	if req.VpcId > 16777215 || req.VpcId == 0 {
 		return nil, fmt.Errorf("VPC ID out of range")
+	}
+
+	if req.Vlan == 0 {
+		return nil, fmt.Errorf("vlan must be set and non-zero")
 	}
 
 	stack, err := s.fetchStack(req.VpcId)
@@ -222,10 +317,25 @@ func (s *Server) DeleteNIC(ctx context.Context, req *l2API.Nic) (*l2API.Empty, e
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create nic: %s", err)
 	} else if !ok {
-		return nil, fmt.Errorf("NIC does not exists")
+		return nil, fmt.Errorf("NIC does not exist: %s", req.Id)
 	}
 
-	err = DeleteNIC(stack, req.Id)
+	link, _ := GetNIC(stack, req.Id)
+	s.bgp.DeregisterMacIP(uint32(req.VpcId), req.Vlan, link.Attrs().HardwareAddr, net.ParseIP(req.Ip))
+
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	nic, ok := stack.Nics[req.Id]
+	if ok && !nic.manual {
+		err = DeleteNIC(stack, req.Id)
+	} else if ok {
+		delete(stack.Nics, req.Id)
+	}
+
+	if err := s.UpdateVLANTrunks(stack); err != nil {
+		log.Printf("failed to update vlan trunk: %s", err)
+	}
 
 	s.logChange(&l2API.StackChange{
 		VpcId:  req.VpcId,

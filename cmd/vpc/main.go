@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tcfw/vpc/pkg/l3/cmd"
+	"github.com/tcfw/vpc/pkg/vpc/cmd"
 )
 
 func main() {
-	dcmd := cmd.NewDefaultCommand()
+	cmd := cmd.NewDefaultCommand()
 
-	if err := dcmd.Execute(); err != nil {
+	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

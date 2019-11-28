@@ -28,6 +28,17 @@
         }
       }
     },
+    "vpcInternetGWsRespones": {
+      "type": "object",
+      "properties": {
+        "internet_gws": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/vpcInternetGW"
+          }
+        }
+      }
+    },
     "vpcSubnet": {
       "type": "object",
       "properties": {
@@ -43,6 +54,27 @@
         },
         "cidr": {
           "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "inner_vlan": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "vpcSubnetsResponse": {
+      "type": "object",
+      "properties": {
+        "subnets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/vpcSubnet"
+          }
         }
       }
     },
@@ -52,12 +84,36 @@
         "id": {
           "type": "integer",
           "format": "int32"
+        },
+        "account": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "cidr": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "asn": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "vni": {
+          "type": "integer",
+          "format": "int32"
         }
       }
     },
     "vpcVPCInfoResponse": {
       "type": "object",
       "properties": {
+        "vpc": {
+          "$ref": "#/definitions/vpcVPC"
+        },
         "subnets": {
           "type": "array",
           "items": {

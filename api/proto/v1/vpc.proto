@@ -5,6 +5,11 @@ option go_package = "vpc";
 
 message VPC {
 	int32 id = 1;
+	int32 account = 2;
+	string cidr = 3;
+	map<string,string> metadata = 4;
+	int32 asn = 5;
+	int32 vni = 6;
 }
 
 message Subnet {
@@ -12,6 +17,8 @@ message Subnet {
 	int32 vpc_id = 2;
 	string region = 3;
 	string cidr = 4;
+	map<string,string> metadata = 5;
+	int32 inner_vlan = 6;
 }
 
 message InternetGW {
@@ -56,11 +63,22 @@ message VPCInfoRequest {
 }
 
 message VPCInfoResponse {
+	VPC vpc = 1;
+	repeated Subnet subnets = 2;
+	InternetGW internetGW = 3;
+}
+
+message SubnetsResponse {
 	repeated Subnet subnets = 1;
-	InternetGW internetGW = 2;
+}
+
+message InternetGWsRespones {
+	repeated InternetGW internet_gws = 1;
 }
 
 service VPCService {
 	rpc VPCs(VPCsRequest) returns (VPCsResponse) {};
 	rpc VPCInfo(VPCInfoRequest) returns (VPCInfoResponse) {};
+	rpc Subnets(VPCInfoRequest) returns (SubnetsResponse) {};
+	rpc InternetGWs(VPCInfoRequest) returns (InternetGWsRespones) {};
 }

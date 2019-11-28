@@ -13,6 +13,9 @@ func (s *Server) Gc() {
 	for {
 		s.m.Lock()
 		for _, stack := range s.stacks {
+			if stack.Bridge == nil {
+				continue
+			}
 			links, err := getBridgeLinks(stack.Bridge.Index)
 			if err != nil {
 				log.Println(err)
@@ -29,6 +32,8 @@ func (s *Server) Gc() {
 
 				delete(s.stacks, vpcID)
 
+				s.bgp.DeregisterVTEP(uint32(vpcID))
+
 				s.logChange(&l2API.StackChange{
 					VpcId:  vpcID,
 					Action: "gc",
@@ -37,7 +42,7 @@ func (s *Server) Gc() {
 		}
 		s.m.Unlock()
 
-		time.Sleep(1 * time.Minute)
+		time.Sleep(5 * time.Second)
 	}
 }
 
