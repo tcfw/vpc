@@ -53,7 +53,10 @@
           "format": "int64"
         },
         "ip": {
-          "type": "string"
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

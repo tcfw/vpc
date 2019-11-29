@@ -74,6 +74,10 @@ func (r *Router) init() error {
 	r.Ifup("lo")
 	r.EnableForwarding()
 
+	r.Exec(func() error {
+		return r.SetDefaultFWRules()
+	})
+
 	pubIP, _ := netlink.ParseIPNet("192.168.122.254/24")
 
 	exID := fmt.Sprintf("rx-%s", r.ID)
@@ -103,14 +107,17 @@ func (r *Router) init() error {
 
 	r.EnableNATOn("eth0")
 
-	r.Exec(func() error {
-		return r.SetDefaultFWRules()
-	})
+	vlan1 := uint16(5)
+	vlan2 := uint16(6)
+	ip1, cidr1, _ := net.ParseCIDR("10.4.0.1/24")
+	ip2, cidr2, _ := net.ParseCIDR("10.4.1.1/24")
 
-	vlan := uint16(5)
-	ip, cidr, _ := net.ParseCIDR("10.4.0.1/24")
+	if err := r.AddSubnet(ip1, cidr1, vlan1, true); err != nil {
+		r.Delete()
+		return err
+	}
 
-	if err := r.AddSubnet(ip, cidr, vlan, true); err != nil {
+	if err := r.AddSubnet(ip2, cidr2, vlan2, true); err != nil {
 		r.Delete()
 		return err
 	}
@@ -123,8 +130,11 @@ func (r *Router) init() error {
 			if err := r.bgp.Start(ns); err != nil {
 				log.Printf("Failed to start BGP: %s", err)
 			}
-			if err := r.bgp.AdvertSubnet(cidr, vlan); err != nil {
-				log.Printf("Failed to advertsie subnet: %s", err)
+			if err := r.bgp.AdvertSubnet(cidr1, vlan1); err != nil {
+				log.Printf("Failed to advertise subnet: %s", err)
+			}
+			if err := r.bgp.AdvertSubnet(cidr2, vlan2); err != nil {
+				log.Printf("Failed to advertise subnet: %s", err)
 			}
 
 			select {}
@@ -226,7 +236,7 @@ func (r *Router) AddSubnetIFace(addr net.IP, ipnet *net.IPNet, innerVlan uint16)
 		SubnetVlanId:  uint32(innerVlan),
 		ManuallyAdded: true,
 		ManualHwaddr:  hwaddr.String(),
-		Ip:            addr.String(),
+		Ip:            []string{addr.String()},
 	}); err != nil {
 		log.Println(err)
 	}
@@ -304,7 +314,7 @@ func (r *Router) Delete() error {
 			Index: int32(subnet.iface.Attrs().Index),
 			VpcId: r.VPCID,
 			Vlan:  uint32(subnet.vlan),
-			Ip:    subnet.ip.String(),
+			Ip:    []string{subnet.ip.String()},
 		}); err != nil {
 			log.Println(err)
 		}

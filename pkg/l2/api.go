@@ -284,7 +284,9 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 		}
 	}
 
-	s.bgp.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, link.Attrs().HardwareAddr, net.ParseIP(req.Ip))
+	for _, ip := range req.Ip {
+		s.bgp.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, link.Attrs().HardwareAddr, net.ParseIP(ip))
+	}
 
 	if err := s.UpdateVLANTrunks(stack); err != nil {
 		log.Printf("failed to update vlan trunk: %s", err)
@@ -321,7 +323,10 @@ func (s *Server) DeleteNIC(ctx context.Context, req *l2API.Nic) (*l2API.Empty, e
 	}
 
 	link, _ := GetNIC(stack, req.Id)
-	s.bgp.DeregisterMacIP(uint32(req.VpcId), req.Vlan, link.Attrs().HardwareAddr, net.ParseIP(req.Ip))
+
+	for _, ip := range req.Ip {
+		s.bgp.DeregisterMacIP(uint32(req.VpcId), req.Vlan, link.Attrs().HardwareAddr, net.ParseIP(ip))
+	}
 
 	s.m.Lock()
 	defer s.m.Unlock()
