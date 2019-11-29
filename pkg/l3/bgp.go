@@ -90,7 +90,7 @@ func (rbgp *RouterBGP) Start(ns netns.NsHandle) error {
 		DefinedSet: &api.DefinedSet{
 			Name:     "ASN",
 			List:     []string{fmt.Sprintf("%d", rbgp.ASN())},
-			Prefixes: []*api.Prefix{&api.Prefix{}},
+			Prefixes: []*api.Prefix{{}},
 		},
 	})
 
@@ -183,7 +183,7 @@ func (rbgp *RouterBGP) AdvertSubnet(subnet *net.IPNet, vlan uint16) error {
 
 	attrAsPath, _ := ptypes.MarshalAny(&api.AsPathAttribute{
 		Segments: []*api.AsSegment{
-			&api.AsSegment{
+			{
 				Type:    0,
 				Numbers: []uint32{rbgp.ASN()},
 			},
@@ -201,7 +201,7 @@ func (rbgp *RouterBGP) AdvertSubnet(subnet *net.IPNet, vlan uint16) error {
 	return err
 }
 
-//ASN provides the privte ASN of the vpc
+//ASN provides the private ASN of the vpc
 func (rbgp *RouterBGP) ASN() uint32 {
 	return asPrefix + rbgp.vni
 }

@@ -42,8 +42,6 @@ func main() {
 			log.Fatalln(err)
 		}
 		fmt.Printf("%d\t%s\t%x\t%v\n", d.ID, d.Name, d.UUID, state)
-		// xml, _ := l.DomainGetXMLDesc(d, 0)
-		// fmt.Println(xml)
 	}
 
 	if err := l.Disconnect(); err != nil {

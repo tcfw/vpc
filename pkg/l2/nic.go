@@ -20,7 +20,7 @@ type VNic struct {
 
 //CreateNIC creates a new tap device attached to a VPC bridge
 //NOTE: this type of NIC can really only be suitable for containers
-//TODO(tcfw) create new functio to generate macvtap
+//TODO(tcfw) create new function to generate macvtap
 func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error) {
 	if subnetVlan > 4096 {
 		return nil, fmt.Errorf("subnet out of range")

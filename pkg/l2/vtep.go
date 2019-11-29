@@ -124,6 +124,7 @@ func (s *Server) SubscribeL2Updates(vpcID int32) {
 	vtep := vtepLink.(*netlink.Vxlan)
 
 	go func() {
+		//TODO(tcfw) close off when vtep deleted
 		ticker := time.Tick(10 * time.Second)
 		for {
 			select {
@@ -134,41 +135,47 @@ func (s *Server) SubscribeL2Updates(vpcID int32) {
 		}
 	}()
 
-	if vtep.Proxy {
-		updateCh := make(chan netlink.NeighUpdate)
-		doneCh := make(chan struct{})
+	if !vtep.Proxy {
+		return
+	}
 
-		if err := netlink.NeighSubscribe(updateCh, doneCh); err != nil {
-			log.Println(err)
-			return
+	updateCh := make(chan netlink.NeighUpdate)
+	doneCh := make(chan struct{})
+
+	if err := netlink.NeighSubscribe(updateCh, doneCh); err != nil {
+		log.Println(err)
+		return
+	}
+
+	for {
+		change, ok := <-updateCh
+		if !ok {
+			break
 		}
-
-		for {
-			change, ok := <-updateCh
-			if !ok {
-				break
+		if change.LinkIndex == vtep.Attrs().Index {
+			//Only interested in neighbor requests
+			if change.Type != unix.RTM_GETNEIGH {
+				continue
 			}
-			if change.LinkIndex == vtep.Attrs().Index {
-				//Only interested in neighbor requests
-				if change.Type != unix.RTM_GETNEIGH {
-					continue
-				}
 
-				log.Printf("%++v\n", change)
-
-				if change.State == netlink.NUD_STALE && change.LLIPAddr == nil {
-					if change.IP == nil && change.HardwareAddr.String() == net.HardwareAddr(nil).String() {
-						s.handleVTEPPoll(uint32(vpcID))
-					} else if change.IP == nil {
-						s.handleMacReq(uint32(vpcID), change.HardwareAddr)
-					}
-				} else if change.State == netlink.NUD_FAILED || change.State == netlink.NUD_NOARP {
-					log.Println("failed arp")
-				} else {
-					log.Println("unknown neigh state")
-				}
-			}
+			s.handleChange(change, vtep, vpcID)
 		}
+	}
+}
+
+func (s *Server) handleChange(change netlink.NeighUpdate, link netlink.Link, vpc int32) {
+	log.Printf("%++v\n", change)
+
+	if change.State == netlink.NUD_STALE && change.LLIPAddr == nil {
+		if change.IP == nil && change.HardwareAddr.String() == net.HardwareAddr(nil).String() {
+			s.handleVTEPPoll(uint32(vpc))
+		} else if change.IP == nil {
+			s.handleMacReq(uint32(vpc), change.HardwareAddr)
+		}
+	} else if change.State == netlink.NUD_FAILED || change.State == netlink.NUD_NOARP {
+		log.Println("failed arp")
+	} else {
+		log.Println("unknown neigh state")
 	}
 }
 

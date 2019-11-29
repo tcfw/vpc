@@ -223,7 +223,7 @@ func (rbgp *BGPSpeak) updateASNPolicy() {
 		DefinedSet: &api.DefinedSet{
 			Name:     "ASN",
 			List:     list,
-			Prefixes: []*api.Prefix{&api.Prefix{}},
+			Prefixes: []*api.Prefix{{}},
 		},
 	})
 }

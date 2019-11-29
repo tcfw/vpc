@@ -240,18 +240,8 @@ func (s *Server) WatchStacks(_ *l2API.Empty, stream l2API.L2Service_WatchStacksS
 
 //AddNIC Add a new NIC to a VPC linux bridge
 func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic, error) {
-	if req.VpcId > 16777215 || req.VpcId == 0 {
-		return nil, fmt.Errorf("VPC ID out of range")
-	}
-
-	if req.ManuallyAdded && req.ManualHwaddr == "" {
-		return nil, fmt.Errorf("manually created nics must provide a hwaddr")
-	} else if !req.ManuallyAdded && req.ManualHwaddr != "" {
-		return nil, fmt.Errorf("automatically created nics cannot supply manual hwaddrs")
-	}
-
-	if req.SubnetVlanId == 0 {
-		return nil, fmt.Errorf("vlan must be set and non-zero")
+	if err := s.validateAddNicRequest(req); err != nil {
+		return nil, err
 	}
 
 	stack, err := s.fetchStack(req.VpcId)
@@ -298,6 +288,23 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 	})
 
 	return formatToAPINic(stack, link, req.Id), nil
+}
+
+func (s *Server) validateAddNicRequest(req *l2API.NicRequest) error {
+	if req.VpcId > 16777215 || req.VpcId == 0 {
+		return fmt.Errorf("VPC ID out of range")
+	}
+	if req.ManuallyAdded && req.ManualHwaddr == "" {
+		return fmt.Errorf("manually created nics must provide a hwaddr")
+	}
+	if !req.ManuallyAdded && req.ManualHwaddr != "" {
+		return fmt.Errorf("automatically created nics cannot supply manual hwaddrs")
+	}
+	if req.SubnetVlanId == 0 {
+		return fmt.Errorf("vlan must be set and non-zero")
+	}
+
+	return nil
 }
 
 //DeleteNIC Delete a NIC from a VPC linux bridge
