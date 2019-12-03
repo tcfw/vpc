@@ -19,8 +19,11 @@ require (
 	github.com/osrg/gobgp v2.0.0+incompatible
 	github.com/prometheus/common v0.7.0
 	github.com/satori/go.uuid v1.2.0 // indirect
+	github.com/songgao/packets v0.0.0-20160404182456-549a10cd4091
+	github.com/songgao/water v0.0.0-20190725173103-fd331bda3f4b
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/viper v1.3.2
+	github.com/stretchr/testify v1.3.0
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
 	github.com/vishvananda/netlink v1.0.1-0.20191113183427-d71301a47b60
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df

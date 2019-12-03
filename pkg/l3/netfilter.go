@@ -21,9 +21,9 @@ func (r *Router) SetDefaultFWRules() error {
 
 	//apply same rules for both ipv4 and ipv6
 	for _, ipt := range ipts {
-		ipt.Policy(iptTFILTER, iptCINPUT, "DROP")
+		// ipt.Policy(iptTFILTER, iptCINPUT, "DROP")
 		ipt.Policy(iptTFILTER, iptCFORWARD, "ACCEPT")
-		ipt.Policy(iptTFILTER, iptCOUTPUT, "DROP")
+		// ipt.Policy(iptTFILTER, iptCOUTPUT, "DROP")
 
 		//Allow any loopback
 		ipt.Append(iptTFILTER, iptCINPUT, "-i", "lo", "-j", "ACCEPT")

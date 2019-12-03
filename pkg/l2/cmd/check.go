@@ -51,8 +51,8 @@ func NewCheckCmd() *cobra.Command {
 				}
 				if !ok {
 					fmt.Println("\xE2\x9D\x8C  VTEP is missing")
-				} else if stack.Vtep.OperState != netlink.OperUp {
-					fmt.Printf("\xE2\x9D\x93  VTEP is in %s state\n", strings.ToUpper(stack.Vtep.OperState.String()))
+				} else if stack.Vtep.Attrs().OperState != netlink.OperUp {
+					fmt.Printf("\xE2\x9D\x93  VTEP is in %s state\n", strings.ToUpper(stack.Vtep.Attrs().OperState.String()))
 				} else {
 					fmt.Println("\xE2\x9C\x85  VTEP is UP")
 				}

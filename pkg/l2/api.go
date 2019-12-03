@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	l2API "github.com/tcfw/vpc/pkg/api/v1/l2"
+	"github.com/tcfw/vpc/pkg/l2/transport"
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
 )
@@ -23,9 +24,14 @@ func Serve(port uint) {
 
 	grpcServer := grpc.NewServer()
 
-	srv := NewServer()
+	srv, err := NewServer()
+	if err != nil {
+		log.Fatalf("failed to start vtep: %s", err)
+	}
+
 	go srv.Gc()
 	go srv.BGP()
+	go srv.transport.Start()
 
 	l2API.RegisterL2ServiceServer(grpcServer, srv)
 	log.Println("Starting gRPC server")
@@ -34,18 +40,27 @@ func Serve(port uint) {
 
 //Server l2 API server
 type Server struct {
-	m       sync.Mutex
-	watches []chan l2API.StackChange
-	stacks  map[int32]*Stack
-	bgp     *BGPSpeak
+	m         sync.Mutex
+	watches   []chan l2API.StackChange
+	stacks    map[int32]*Stack
+	bgp       SDNController
+	transport *transport.Listener
 }
 
 //NewServer creates a new server instance
-func NewServer() *Server {
-	return &Server{
-		watches: []chan l2API.StackChange{},
-		stacks:  map[int32]*Stack{},
+func NewServer() (*Server, error) {
+	lis, err := transport.NewListener(4789, 1000)
+	if err != nil {
+		return nil, err
 	}
+
+	srv := &Server{
+		watches:   []chan l2API.StackChange{},
+		stacks:    map[int32]*Stack{},
+		transport: lis,
+	}
+
+	return srv, nil
 }
 
 //BGP starts the BGP speaker to advertise type-2 and type-3 EVPN routes
@@ -112,16 +127,20 @@ func (s *Server) AddStack(ctx context.Context, req *l2API.StackRequest) (*l2API.
 
 	stack, err := CreateVPCStack(req.VpcId, vtepdev)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create stack: %s", err)
+	}
+
+	if err := s.transport.AddVTEP(uint32(req.VpcId), stack.Vtep.Attrs().Name); err != nil {
+		return nil, fmt.Errorf("failed to start tap: %s", err)
 	}
 
 	go s.SubscribeL2Updates(req.VpcId)
 
-	if err := s.bgp.RegisterVTEP(uint32(req.VpcId)); err != nil {
+	if err := s.bgp.RegisterEP(uint32(req.VpcId)); err != nil {
 		defer func() {
 			DeleteVPCStack(stack)
 		}()
-		return nil, err
+		return nil, fmt.Errorf("failed to register endpoint: %s", err)
 	}
 
 	status := getStackStatus(stack)
@@ -275,7 +294,11 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 	}
 
 	for _, ip := range req.Ip {
-		s.bgp.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, link.Attrs().HardwareAddr, net.ParseIP(ip))
+		hwaddr := link.Attrs().HardwareAddr
+		if req.ManuallyAdded {
+			hwaddr, _ = net.ParseMAC(req.ManualHwaddr)
+		}
+		s.bgp.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, hwaddr, net.ParseIP(ip))
 	}
 
 	if err := s.UpdateVLANTrunks(stack); err != nil {
@@ -395,13 +418,13 @@ func formatToAPIStack(stack *Stack) *l2API.Stack {
 	}
 
 	if stack.Bridge != nil {
-		APIStack.BridgeLinkIndex = int32(stack.Bridge.Index)
+		APIStack.BridgeLinkIndex = int32(stack.Bridge.Attrs().Index)
 		APIStack.BridgeLinkName = stack.Bridge.Name
 	}
 
 	if stack.Vtep != nil {
-		APIStack.VtepLinkIndex = int32(stack.Vtep.Index)
-		APIStack.VtepLinkName = stack.Vtep.Name
+		APIStack.VtepLinkIndex = int32(stack.Vtep.Attrs().Index)
+		APIStack.VtepLinkName = stack.Vtep.Attrs().Name
 	}
 
 	return APIStack
@@ -437,7 +460,7 @@ func getStackStatus(stack *Stack) *l2API.StackStatusResponse {
 	ok, err = HasVTEP(stack.VPCID)
 	if err != nil || !ok {
 		status.Vtep = l2API.LinkStatus_MISSING
-	} else if stack.Vtep.OperState != netlink.OperUp {
+	} else if stack.Vtep.Attrs().OperState != netlink.OperUp {
 		status.Vtep = l2API.LinkStatus_DOWN
 	} else {
 		status.Vtep = l2API.LinkStatus_UP

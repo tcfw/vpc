@@ -6,8 +6,6 @@ import (
 	"net"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/vishvananda/netlink"
 )
 
@@ -33,7 +31,7 @@ func GetVTEP(vpcID int32) (netlink.Link, error) {
 	ifaceName := fmt.Sprintf(vtepPattern, vpcID)
 
 	for _, link := range links {
-		if link.Type() == "vxlan" && link.Attrs().Name == ifaceName {
+		if link.Type() == "tuntap" && link.Attrs().Name == ifaceName {
 			return link, nil
 		}
 	}
@@ -62,40 +60,29 @@ func HasVTEP(vpcID int32) (bool, error) {
 //CreateVTEP creates a new vtep using the linux VxLAN device
 //in nolearning mode (use MP-BGP-EVPN/L2VPN for learning)
 //NOTE: the actual VxLAN traffic port is used insteado the linux default
-func CreateVTEP(vpcID int32, bridge *netlink.Bridge, dev string) (*netlink.Vxlan, error) {
+func CreateVTEP(vpcID int32, bridge *netlink.Bridge, dev string) (netlink.Link, error) {
 	if ok, _ := HasVTEP(vpcID); ok {
 		return nil, fmt.Errorf("vpc %d already has a vtep", vpcID)
-	}
-
-	devLink, err := netlink.LinkByName(dev)
-	if err != nil {
-		return nil, fmt.Errorf("Cannot find vtep link dev %s", dev)
 	}
 
 	la := netlink.NewLinkAttrs()
 	la.Name = fmt.Sprintf(vtepPattern, vpcID)
 
-	vtep := &netlink.Vxlan{
-		LinkAttrs:    la,
-		VxlanId:      int(vpcID),
-		VtepDevIndex: devLink.Attrs().Index,
-		L2miss:       false, //TODO(tcfw) inject l2 req to FDB
-		L3miss:       false, //TODO(tcfw) track l3 and response to neighbor reqs
-		Learning:     false,
-		Proxy:        false,
-		Port:         4789,
+	vtep := &netlink.Tuntap{
+		LinkAttrs: la,
+		Mode:      netlink.TUNTAP_MODE_TAP,
 	}
 
 	if err := netlink.LinkAdd(vtep); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to add link to netlink: %s", err)
 	}
 
 	if err := netlink.LinkSetMaster(vtep, bridge); err != nil {
 		netlink.LinkDel(vtep)
-		return nil, err
+		return nil, fmt.Errorf("failed to set vtep master: %s", err)
 	}
 
-	err = netlink.LinkSetUp(vtep)
+	err := netlink.LinkSetUp(vtep)
 
 	return vtep, err
 }
@@ -116,80 +103,57 @@ func DeleteVTEP(vpcID int32) error {
 
 //SubscribeL2Updates monitors for subscription errors
 func (s *Server) SubscribeL2Updates(vpcID int32) {
-	vtepLink, err := GetVTEP(vpcID)
+	miss, err := s.transport.FDBMiss(uint32(vpcID))
 	if err != nil {
-		return
+		log.Fatalf("uninited vtep miss")
 	}
 
-	vtep := vtepLink.(*netlink.Vxlan)
-
-	go func() {
-		//TODO(tcfw) close off when vtep deleted
-		ticker := time.Tick(10 * time.Second)
-		for {
-			select {
-			case <-ticker:
-				s.handleVTEPPoll(uint32(vpcID))
-				break
-			}
-		}
-	}()
-
-	if !vtep.Proxy {
-		return
-	}
-
-	updateCh := make(chan netlink.NeighUpdate)
-	doneCh := make(chan struct{})
-
-	if err := netlink.NeighSubscribe(updateCh, doneCh); err != nil {
-		log.Println(err)
-		return
-	}
-
+	ticker := time.Tick(10 * time.Second)
 	for {
-		change, ok := <-updateCh
-		if !ok {
+		select {
+		case <-ticker:
+			go s.handleVTEPPoll(uint32(vpcID))
+			break
+		case mac, ok := <-miss:
+			if !ok {
+				return
+			}
+			go s.handleMacLookup(uint32(vpcID), mac)
 			break
 		}
-		if change.LinkIndex == vtep.Attrs().Index {
-			//Only interested in neighbor requests
-			if change.Type != unix.RTM_GETNEIGH {
-				continue
-			}
-
-			s.handleChange(change, vtep, vpcID)
-		}
 	}
 }
 
-func (s *Server) handleChange(change netlink.NeighUpdate, link netlink.Link, vpc int32) {
-	log.Printf("%++v\n", change)
-
-	if change.State == netlink.NUD_STALE && change.LLIPAddr == nil {
-		if change.IP == nil && change.HardwareAddr.String() == net.HardwareAddr(nil).String() {
-			s.handleVTEPPoll(uint32(vpc))
-		} else if change.IP == nil {
-			s.handleMacReq(uint32(vpc), change.HardwareAddr)
-		}
-	} else if change.State == netlink.NUD_FAILED || change.State == netlink.NUD_NOARP {
-		log.Println("failed arp")
-	} else {
-		log.Println("unknown neigh state")
-	}
-}
-
+//handleVTEPPoll applies zero'd hwaddrs to bridge forwarding
 func (s *Server) handleVTEPPoll(vpcID uint32) {
-	// log.Printf("attempt to find vxlan vtep links")
-	if err := s.bgp.ApplyVTEPAD(vpcID); err != nil {
+	endpoints, err := s.bgp.BroadcastEndpoints(vpcID)
+	if err != nil {
 		log.Printf("VTEP linking failed: %s", err)
 	}
+
+	for _, endpoint := range endpoints {
+		hwaddr, _ := net.ParseMAC("00:00:00:00:00:00")
+		s.transport.FDB.AddEntry(vpcID, hwaddr, endpoint)
+	}
 }
 
-func (s *Server) handleMacReq(vpcID uint32, hwaddr net.HardwareAddr) {
-	ip, err := s.bgp.LookupMac(uint32(vpcID), hwaddr)
+//handleIPLookup looks up a potential mac for a given IP and adds to FDB
+func (s *Server) handleIPLookup(vpcID uint32, vlan uint16, ip net.IP) {
+	hwaddr, gw, err := s.bgp.LookupIP(vpcID, vlan, ip)
 	if err != nil || ip == nil {
-		log.Printf("Failed to find VTEP for %+v %s\n", hwaddr, err)
+		log.Printf("Failed to find VTEP for %+v %s\n", ip, err)
 		return
 	}
+
+	log.Println("Found HWADDR for", ip, "at", hwaddr, "via", gw)
+}
+
+func (s *Server) handleMacLookup(vpcID uint32, mac net.HardwareAddr) {
+	gw, err := s.bgp.LookupMac(vpcID, mac)
+	if err != nil || gw == nil {
+		log.Printf("Failed to find VTEP for %s", mac)
+		return
+	}
+
+	s.transport.FDB.AddEntry(vpcID, mac, gw)
 }

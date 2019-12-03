@@ -1,12 +1,16 @@
 package l2
 
-import "github.com/vishvananda/netlink"
+import (
+	"fmt"
+
+	"github.com/vishvananda/netlink"
+)
 
 //Stack stores references to the various devices for VPC connectivity
 type Stack struct {
 	VPCID  int32
 	Bridge *netlink.Bridge
-	Vtep   *netlink.Vxlan
+	Vtep   netlink.Link
 	Nics   map[string]*VNic
 }
 
@@ -15,14 +19,14 @@ func CreateVPCStack(vpcID int32, vtepDev string) (*Stack, error) {
 	br, err := CreateVPCBridge(vpcID)
 	if err != nil {
 		DeleteVPCBridge(vpcID)
-		return nil, err
+		return nil, fmt.Errorf("failed to create bridge: %s", err)
 	}
 
 	vtep, err := CreateVTEP(vpcID, br, vtepDev)
 	if err != nil {
 		DeleteVPCBridge(vpcID)
 		DeleteVTEP(vpcID)
-		return nil, err
+		return nil, fmt.Errorf("failed to create vtep: %s", err)
 	}
 
 	return &Stack{VPCID: vpcID, Bridge: br, Vtep: vtep, Nics: map[string]*VNic{}}, nil

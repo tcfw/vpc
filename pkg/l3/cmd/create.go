@@ -48,6 +48,7 @@ func NewCreateCmd() *cobra.Command {
 						resp, err = l2cli.AddStack(ctx, &l2API.StackRequest{VpcId: int32(vpcID)})
 						if err != nil {
 							log.Println("Failed to create stack: ", err)
+							return
 						}
 					} else {
 						log.Println("Failed to fetch stack: ", err)

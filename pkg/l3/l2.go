@@ -26,7 +26,7 @@ func L2APIToStack(l2Stack *l2API.Stack) (*l2.Stack, error) {
 		return nil, fmt.Errorf("Failed to find vtep: %s", err)
 	}
 
-	stack.Vtep = vtep.(*netlink.Vxlan)
+	stack.Vtep = vtep.(*netlink.Tuntap)
 
 	return stack, nil
 }

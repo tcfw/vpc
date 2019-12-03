@@ -1,6 +1,7 @@
 package l2
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -17,7 +18,7 @@ func (s *Server) Gc() {
 			if stack.Bridge == nil {
 				continue
 			}
-			links, err := getBridgeLinks(stack.Bridge.Index)
+			links, err := getBridgeLinks(stack.Bridge.Index, stack.VPCID)
 			if err != nil {
 				log.Println(err)
 				continue
@@ -31,9 +32,11 @@ func (s *Server) Gc() {
 					continue
 				}
 
+				s.transport.DelVTEP(uint32(vpcID))
+
 				delete(s.stacks, vpcID)
 
-				s.bgp.DeregisterVTEP(uint32(vpcID))
+				s.bgp.DeregisterEP(uint32(vpcID))
 
 				s.logChange(&l2API.StackChange{
 					VpcId:  vpcID,
@@ -47,7 +50,7 @@ func (s *Server) Gc() {
 	}
 }
 
-func getBridgeLinks(brIndex int) ([]netlink.Link, error) {
+func getBridgeLinks(brIndex int, vpcID int32) ([]netlink.Link, error) {
 	slaveLinks := []netlink.Link{}
 
 	handle, err := netlink.NewHandle(netlink.FAMILY_ALL)
@@ -63,8 +66,10 @@ func getBridgeLinks(brIndex int) ([]netlink.Link, error) {
 		return nil, err
 	}
 
+	vtepName := fmt.Sprintf("t-%d", vpcID)
+
 	for _, link := range links {
-		if link.Attrs().MasterIndex == brIndex && link.Type() != "vxlan" {
+		if link.Attrs().MasterIndex == brIndex && link.Attrs().Name != vtepName {
 			slaveLinks = append(slaveLinks, link)
 		}
 	}

@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
-
-	"golang.org/x/sys/unix"
-
-	"github.com/vishvananda/netlink"
+	"sync"
+	"time"
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
@@ -123,13 +121,13 @@ func (rbgp *BGPSpeak) AddPeer(addr string) error {
 	})
 }
 
-//RegisterVTEP adds a Type-3 EVPN route to the VTEP
-func (rbgp *BGPSpeak) RegisterVTEP(vni uint32) error {
+//RegisterEP adds a Type-3 EVPN route to the VTEP
+func (rbgp *BGPSpeak) RegisterEP(vni uint32) error {
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
 
 	nlri, _ := ptypes.MarshalAny(&api.EVPNEthernetAutoDiscoveryRoute{
 		Rd:          rd,
-		EthernetTag: 0, //TODO(tcfw) use subnet vlan
+		EthernetTag: 0,
 		Esi:         &api.EthernetSegmentIdentifier{Type: 0, Value: []byte("single-homed")},
 		Label:       vni,
 	})
@@ -174,8 +172,8 @@ func (rbgp *BGPSpeak) pathPAttrs() []*any.Any {
 	return []*any.Any{attrOrigin, attrNextHop}
 }
 
-//DeregisterVTEP removes the Type-3 EVPN route to the VTEP
-func (rbgp *BGPSpeak) DeregisterVTEP(vni uint32) error {
+//DeregisterEP removes the Type-3 EVPN route to the VTEP
+func (rbgp *BGPSpeak) DeregisterEP(vni uint32) error {
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
 
 	nlri, _ := ptypes.MarshalAny(&api.EVPNEthernetAutoDiscoveryRoute{
@@ -264,28 +262,133 @@ func (rbgp *BGPSpeak) DeregisterMacIP(vni uint32, vlan uint32, mac net.HardwareA
 	return rbgp.delL2VPNEVPNNLRIPath(nlri)
 }
 
-//LookupMac resolve l2 requests from bridge to forward to the correct VTEP
-func (rbgp *BGPSpeak) LookupMac(vni uint32, mac net.HardwareAddr) (*net.IP, error) {
-	log.Printf("LOOKUP MAC: %+v %+v\n", vni, mac)
+//LookupIP resolve l3 requests from bridge
+func (rbgp *BGPSpeak) LookupIP(vni uint32, vlan uint16, ip net.IP) (net.HardwareAddr, net.IP, error) {
+	log.Printf("LOOKUP IP: %+v %d, %+v\n", vni, vlan, ip)
 
-	if err := rbgp.s.ListPath(context.Background(), &api.ListPathRequest{
-		TableType: api.TableType_ADJ_IN,
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	var hwaddr net.HardwareAddr
+	var gw net.IP
+
+	found := make(chan struct{})
+
+	if err := rbgp.s.ListPath(ctx, &api.ListPathRequest{
+		TableType: api.TableType_GLOBAL,
 		Family: &api.Family{
 			Afi:  api.Family_AFI_L2VPN,
 			Safi: api.Family_SAFI_EVPN,
 		},
 	}, func(dst *api.Destination) {
-		log.Printf("%+v", dst)
+		for _, path := range dst.Paths {
+			if path.GetSourceId() != rbgp.rID.String() && path.SourceId != "<nil>" {
+				switch true {
+				case ptypes.Is(path.Nlri, &api.EVPNMACIPAdvertisementRoute{}):
+					macIP := &api.EVPNMACIPAdvertisementRoute{}
+					ptypes.UnmarshalAny(path.Nlri, macIP)
+
+					if macIP.Labels[0] != vni || macIP.EthernetTag != uint32(vlan) {
+						continue
+					}
+
+					rd := &api.RouteDistinguisherIPAddress{}
+					ptypes.UnmarshalAny(macIP.Rd, rd)
+
+					rdIP := net.ParseIP(rd.Admin)
+
+					if macIP.IpAddress == ip.String() {
+						hwaddr, _ = net.ParseMAC(macIP.MacAddress)
+						gw = rdIP
+
+						found <- struct{}{}
+						return
+					}
+				}
+			}
+		}
 	}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return nil, nil
+	select {
+	case <-found:
+		break
+	case <-ctx.Done():
+		return nil, nil, fmt.Errorf("timed out")
+	}
+
+	return hwaddr, gw, nil
 }
 
-//ApplyVTEPAD adds all known vteps for a given VNI to the VTEP FDB
-func (rbgp *BGPSpeak) ApplyVTEPAD(vni uint32) error {
-	if err := rbgp.s.ListPath(context.Background(), &api.ListPathRequest{
+//LookupMac resolves l2 requets for VTEP forwarding
+func (rbgp *BGPSpeak) LookupMac(vni uint32, mac net.HardwareAddr) (net.IP, error) {
+	log.Printf("LOOKUP MAC: %d %s\n", vni, mac)
+
+	timeout := 4 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var gw net.IP
+
+	found := make(chan struct{})
+
+	go func() {
+		rbgp.s.ListPath(ctx, &api.ListPathRequest{
+			TableType: api.TableType_GLOBAL,
+			Family: &api.Family{
+				Afi:  api.Family_AFI_L2VPN,
+				Safi: api.Family_SAFI_EVPN,
+			},
+		}, func(dst *api.Destination) {
+			for _, path := range dst.Paths {
+				if path.GetSourceId() != rbgp.rID.String() && path.SourceId != "<nil>" {
+					switch true {
+					case ptypes.Is(path.Nlri, &api.EVPNMACIPAdvertisementRoute{}):
+						macIP := &api.EVPNMACIPAdvertisementRoute{}
+						ptypes.UnmarshalAny(path.Nlri, macIP)
+
+						if macIP.Labels[0] != vni { //|| macIP.EthernetTag != uint32(vpcID)
+							continue
+						}
+
+						rd := &api.RouteDistinguisherIPAddress{}
+						ptypes.UnmarshalAny(macIP.Rd, rd)
+
+						rdIP := net.ParseIP(rd.Admin)
+
+						if macIP.MacAddress == mac.String() {
+							gw = rdIP
+
+							found <- struct{}{}
+							return
+						}
+					}
+				}
+			}
+		})
+	}()
+
+	select {
+	case <-found:
+		break
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timed out")
+	}
+
+	return gw, nil
+}
+
+//BroadcastEndpoints adds all known vteps for a given VNI to the VTEP FDB for broadcast traffic
+func (rbgp *BGPSpeak) BroadcastEndpoints(vni uint32) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	endpoints := []net.IP{}
+	var mu sync.Mutex
+
+	if err := rbgp.s.ListPath(ctx, &api.ListPathRequest{
 		TableType: api.TableType_GLOBAL,
 		Family: &api.Family{
 			Afi:  api.Family_AFI_L2VPN,
@@ -295,47 +398,33 @@ func (rbgp *BGPSpeak) ApplyVTEPAD(vni uint32) error {
 		for _, path := range dst.Paths {
 			//Ingore our own paths
 			if path.GetSourceId() != rbgp.rID.String() && path.SourceId != "<nil>" {
-				// log.Printf("Got path: %+v", path.Nlri)
-
 				switch true {
 				case ptypes.Is(path.Nlri, &api.EVPNEthernetAutoDiscoveryRoute{}):
 					eadRoute := &api.EVPNEthernetAutoDiscoveryRoute{}
 					ptypes.UnmarshalAny(path.Nlri, eadRoute)
+
+					if eadRoute.Label != vni {
+						continue
+					}
 
 					rd := &api.RouteDistinguisherIPAddress{}
 					ptypes.UnmarshalAny(eadRoute.Rd, rd)
 
 					rdIP := net.ParseIP(rd.Admin)
 
-					link, err := netlink.LinkByName(fmt.Sprintf("t-%d", vni))
-					if err != nil {
-						log.Println("failed to find VTEP iface:", err)
-						continue
-					}
+					mu.Lock()
+					defer mu.Unlock()
 
-					hwaddr, _ := net.ParseMAC("00:00:00:00:00:00")
-
-					neigh := &netlink.Neigh{
-						LinkIndex:    link.Attrs().Index,
-						HardwareAddr: hwaddr,
-						Family:       unix.AF_BRIDGE,
-						IP:           rdIP,
-						State:        netlink.NUD_REACHABLE,
-						Flags:        netlink.NTF_SELF | netlink.NTF_PROXY,
-					}
-
-					log.Printf("Appending neigh: %+v", neigh)
-
-					if err := netlink.NeighAppend(neigh); err != nil {
-						log.Println("failed to add VTEP to FDB:", err)
-					}
+					endpoints = append(endpoints, rdIP)
 				}
 			}
 		}
 
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	<-ctx.Done()
+
+	return endpoints, nil
 }
