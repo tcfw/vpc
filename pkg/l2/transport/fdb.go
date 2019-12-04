@@ -97,7 +97,7 @@ func (tbl *FDB) gc() {
 		time.Sleep(2 * time.Minute)
 		for k, entry := range tbl.entries {
 			//Delete entries older than 1 minute
-			if entry.updated.Unix() < time.Now().Add(-1*time.Minute).Unix() {
+			if entry.updated.Unix() < time.Now().Add(-3*time.Minute).Unix() {
 				tbl.mu.Lock()
 
 				log.Printf("FDB GC: %s %s", entry.mac, entry.rdst)

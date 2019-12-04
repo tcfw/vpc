@@ -15,6 +15,10 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	mtu = 1500
+)
+
 //Serve start the GRPC server
 func Serve(port uint) {
 	lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -49,7 +53,7 @@ type Server struct {
 
 //NewServer creates a new server instance
 func NewServer() (*Server, error) {
-	lis, err := transport.NewListener(4789, 1000)
+	lis, err := transport.NewListener(4789, mtu)
 	if err != nil {
 		return nil, err
 	}

@@ -32,7 +32,7 @@ func NewListener(port uint32, mtu int) (*Listener, error) {
 		packetConn: pc,
 		vteps:      map[uint32]*vtep{},
 		mtu:        mtu,
-		tx:         make(chan *Packet, 1024),
+		tx:         make(chan *Packet),
 		FDB:        NewFDB(),
 	}
 
@@ -46,11 +46,11 @@ func (s *Listener) AddVTEP(vnid uint32, tun string) error {
 
 	vtep := &vtep{
 		vnid:    vnid,
-		out:     make(chan ethernet.Frame, 1024),
-		in:      make(chan *Packet, 1024),
+		out:     make(chan ethernet.Frame),
+		in:      make(chan *Packet),
 		lis:     s,
 		mtu:     s.mtu,
-		FDBMiss: make(chan net.HardwareAddr, 10),
+		FDBMiss: make(chan net.HardwareAddr, 1024),
 	}
 
 	config := water.Config{

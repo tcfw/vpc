@@ -6,6 +6,8 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-iptables/iptables"
@@ -62,7 +64,7 @@ func CreateRouter(l2 l2api.L2ServiceClient, stack *l2.Stack, id string) (*Router
 
 	router.NetNS = ns
 
-	extBr, _ := netlink.LinkByName("virbr0")
+	extBr, _ := netlink.LinkByName(configPublicBridge())
 	router.ExtBr = extBr.(*netlink.Bridge)
 
 	err = router.init()
@@ -105,44 +107,54 @@ func (r *Router) init() error {
 
 	})
 
-	r.EnableNATOn("eth0")
-
-	vlan1 := uint16(5)
-	vlan2 := uint16(6)
-	ip1, cidr1, _ := net.ParseCIDR("10.4.0.1/24")
-	ip2, cidr2, _ := net.ParseCIDR("10.4.1.1/24")
-
-	if err := r.AddSubnet(ip1, cidr1, vlan1, true); err != nil {
-		r.Delete()
-		return err
-	}
-
-	if err := r.AddSubnet(ip2, cidr2, vlan2, true); err != nil {
-		r.Delete()
-		return err
+	if configNAT() {
+		r.EnableNATOn("eth0")
 	}
 
 	go func() {
 		if err := r.Exec(func() error {
 			ns, _ := netns.Get()
-			peers := []string{"192.168.122.1"}
+			peers := configBGPPeers()
 			r.bgp, _ = NewRouterBGP(pubIP.IP, uint32(r.stack.VPCID), peers)
 			if err := r.bgp.Start(ns); err != nil {
 				log.Printf("Failed to start BGP: %s", err)
-			}
-			if err := r.bgp.AdvertSubnet(cidr1, vlan1); err != nil {
-				log.Printf("Failed to advertise subnet: %s", err)
-			}
-			if err := r.bgp.AdvertSubnet(cidr2, vlan2); err != nil {
-				log.Printf("Failed to advertise subnet: %s", err)
 			}
 
 			select {}
 		}); err != nil {
 			r.Delete()
-			log.Fatal(err)
+			log.Fatalf("BGP: %s", err)
 		}
 	}()
+
+	for _, subnetConfig := range configSubnets() {
+		parts := strings.Split(subnetConfig, ":")
+		if len(parts) != 2 {
+			r.Delete()
+			log.Fatalf("Invalid subnet config: %s. See --help for info", subnetConfig)
+		}
+		ip, cidr, err := net.ParseCIDR(parts[0])
+		if err != nil {
+			r.Delete()
+			log.Fatalf("Invalid subnet (%s): %s", parts[0], err)
+		}
+		vlan, err := strconv.Atoi(parts[1])
+		if err != nil {
+			r.Delete()
+			log.Fatalf("Invalid vlan: %s", err)
+		}
+
+		if err := r.AddSubnet(ip, cidr, uint16(vlan), configDHCP()); err != nil {
+			r.Delete()
+			return err
+		}
+		// if err := r.Exec(func() error {
+		// 	return r.bgp.AdvertSubnet(cidr, uint16(vlan))
+		// }); err != nil {
+		// 	r.Delete()
+		// 	log.Fatalf("BGP: %s", err)
+		// }
+	}
 
 	return r.Exec(func() error {
 		id := fmt.Sprintf("r-%s", r.ID)
@@ -161,7 +173,7 @@ func (r *Router) AddSubnet(ip net.IP, cidr *net.IPNet, vlan uint16, dhcp bool) e
 	if dhcp {
 		go func() {
 			err := r.Exec(func() error {
-				dns := []net.IP{net.ParseIP("1.1.1.1")}
+				dns := configDHCPDNS()
 				dhcp, err := NewDHCPv4Server(subnet.vethPeer, cidr, dns)
 				if err != nil {
 					return err

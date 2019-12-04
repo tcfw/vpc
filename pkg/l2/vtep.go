@@ -67,6 +67,7 @@ func CreateVTEP(vpcID int32, bridge *netlink.Bridge, dev string) (netlink.Link, 
 
 	la := netlink.NewLinkAttrs()
 	la.Name = fmt.Sprintf(vtepPattern, vpcID)
+	la.MTU = 1000
 
 	vtep := &netlink.Tuntap{
 		LinkAttrs: la,

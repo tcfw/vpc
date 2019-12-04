@@ -52,6 +52,8 @@ func CreateVPCBridge(vpcID int32) (*netlink.Bridge, error) {
 
 	la := netlink.NewLinkAttrs()
 	la.Name = fmt.Sprintf(vpcBridgePattern, vpcID)
+	la.MTU = 1000
+
 	br := &netlink.Bridge{LinkAttrs: la}
 
 	if err := netlink.LinkAdd(br); err != nil {

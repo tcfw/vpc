@@ -29,6 +29,7 @@ func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error)
 	la := netlink.NewLinkAttrs()
 	la.Name = fmt.Sprintf(nicPattern, id)
 	la.MTU = 1000
+
 	nic := &netlink.Tuntap{
 		LinkAttrs: la,
 		Mode:      netlink.TUNTAP_MODE_TAP,
