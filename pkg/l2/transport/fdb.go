@@ -1,7 +1,7 @@
 package transport
 
 import (
-	"fmt"
+	"bytes"
 	"log"
 	"net"
 	"sync"
@@ -18,14 +18,19 @@ type FDBEntry struct {
 
 //FDB forwarding DB
 type FDB struct {
-	entries map[string]*FDBEntry
+	entries []*FDBEntry
 	mu      sync.RWMutex
+
+	broadcastMac net.HardwareAddr
 }
 
 //NewFDB inits a new FDB table and start GC timer
 func NewFDB() *FDB {
+	bc, _ := net.ParseMAC("00:00:00:00:00:00")
+
 	tbl := &FDB{
-		entries: map[string]*FDBEntry{},
+		entries:      []*FDBEntry{},
+		broadcastMac: bc,
 	}
 	go tbl.gc()
 
@@ -40,7 +45,7 @@ func (tbl *FDB) LookupMac(vnid uint32, dst net.HardwareAddr) net.IP {
 	defer tbl.mu.RUnlock()
 
 	for k, val := range tbl.entries {
-		if val.mac.String() == dst.String() && val.vnid == vnid && val.mac.String() != "00:00:00:00:00:00" {
+		if bytes.Compare(val.mac, dst) == 0 && val.vnid == vnid && bytes.Compare(val.mac, tbl.broadcastMac) != 0 {
 			//Update cache TS
 			val.updated = time.Now()
 			tbl.entries[k] = val
@@ -56,13 +61,13 @@ func (tbl *FDB) LookupMac(vnid uint32, dst net.HardwareAddr) net.IP {
 
 //ListBroadcast finds all broadcast dst VTEPs
 func (tbl *FDB) ListBroadcast(vnid uint32) []net.IP {
-	dsts := []net.IP{}
-
 	tbl.mu.RLock()
 	defer tbl.mu.RUnlock()
 
+	dsts := []net.IP{}
+
 	for _, val := range tbl.entries {
-		if val.mac.String() == "00:00:00:00:00:00" && val.vnid == vnid {
+		if bytes.Compare(val.mac, tbl.broadcastMac) == 0 && val.vnid == vnid {
 			dsts = append(dsts, val.rdst)
 		}
 	}
@@ -72,39 +77,67 @@ func (tbl *FDB) ListBroadcast(vnid uint32) []net.IP {
 
 //AddEntry adds a forwarding entry to the table
 func (tbl *FDB) AddEntry(vnid uint32, mac net.HardwareAddr, rdst net.IP) {
-	k := fmt.Sprintf("%s-%s", mac.String(), rdst.String())
+	loc := -1
 
-	_, ok := tbl.entries[k]
-	if !ok {
+	tbl.mu.RLock()
+
+	for k, entry := range tbl.entries {
+		if entry.vnid == vnid && bytes.Compare(entry.mac, mac) == 0 && entry.rdst.Equal(rdst) {
+			loc = k
+			break
+		}
+	}
+
+	tbl.mu.RUnlock()
+
+	if loc == -1 {
 		log.Printf("added FDB rec: %s %s", mac, rdst)
-	} else {
-		log.Printf("updating FDB rec: %s %s", mac, rdst)
 	}
 
 	tbl.mu.Lock()
 	defer tbl.mu.Unlock()
 
-	tbl.entries[k] = &FDBEntry{
+	entry := &FDBEntry{
 		vnid:    vnid,
 		rdst:    rdst,
 		mac:     mac,
 		updated: time.Now(),
+	}
+
+	if loc == -1 {
+		tbl.entries = append(tbl.entries, entry)
+	} else {
+		tbl.entries[loc] = entry
 	}
 }
 
 func (tbl *FDB) gc() {
 	for {
 		time.Sleep(2 * time.Minute)
+
+		expired := []int{}
+
 		for k, entry := range tbl.entries {
 			//Delete entries older than 1 minute
 			if entry.updated.Unix() < time.Now().Add(-3*time.Minute).Unix() {
-				tbl.mu.Lock()
 
 				log.Printf("FDB GC: %s %s", entry.mac, entry.rdst)
-				delete(tbl.entries, k)
+				expired = append(expired, k)
 
-				tbl.mu.Unlock()
 			}
 		}
+
+		tbl.mu.Lock()
+
+		for _, k := range expired {
+			tbl.delEntry(k)
+		}
+
+		tbl.mu.Unlock()
 	}
+}
+
+func (tbl *FDB) delEntry(i int) {
+	tbl.entries[len(tbl.entries)-1], tbl.entries[i] = tbl.entries[i], tbl.entries[len(tbl.entries)-1]
+	tbl.entries = tbl.entries[:len(tbl.entries)-1]
 }

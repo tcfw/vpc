@@ -25,14 +25,22 @@ func (v *vtep) Stop() {
 func (v *vtep) Handle() {
 	go v.pipeIn()
 
+	// var buf bytes.Buffer
+	var frame ethernet.Frame
 	for {
-		frame := make([]byte, v.mtu)
-		_, err := v.tuntap.Read(frame) //TODO(tcfw) metrics?
+		// buf.Reset()
+		frame.Resize(v.mtu)
+
+		// _, err := buf.ReadFrom(v.tuntap) //TODO(tcfw) metrics?
+		n, err := v.tuntap.Read([]byte(frame))
 		if err != nil {
 			close(v.out)
 			return
 		}
 
+		frame = frame[:n]
+
+		// p := NewPacket(v.vnid, 0, buf.Bytes())
 		p := NewPacket(v.vnid, 0, frame)
 		v.lis.tx <- p
 	}

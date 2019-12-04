@@ -18,7 +18,7 @@ func TestFDBAddEntry(t *testing.T) {
 
 	ip := fdb.LookupMac(vnid, mac)
 
-	assert.Equal(t, ip, rdst)
+	assert.Equal(t, rdst, ip)
 }
 
 func TestFDBListBroadcast(t *testing.T) {

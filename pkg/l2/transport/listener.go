@@ -50,13 +50,15 @@ func (s *Listener) AddVTEP(vnid uint32, tun string) error {
 		in:      make(chan *Packet),
 		lis:     s,
 		mtu:     s.mtu,
-		FDBMiss: make(chan net.HardwareAddr, 1024),
+		FDBMiss: make(chan net.HardwareAddr),
 	}
 
 	config := water.Config{
 		DeviceType: water.TAP,
 	}
 	config.Name = tun
+	config.MultiQueue = true
+
 	ifce, err := water.New(config)
 	if err != nil {
 		return fmt.Errorf("failed to init tun dev: %s", err)
@@ -82,8 +84,8 @@ func (s *Listener) DelVTEP(vnid uint32) {
 func (s *Listener) Start() error {
 	go s.handleOut()
 
+	buf := make([]byte, s.mtu)
 	for {
-		buf := make([]byte, s.mtu)
 		n, addr, err := s.packetConn.ReadFrom(buf)
 		if err != nil {
 			return err
@@ -117,31 +119,32 @@ func (s *Listener) handleOut() {
 		//TODO(tcfw) handle ARP Proxy and ICMPv6
 
 		dst := packet.InnerFrame.Destination()
+		broadcast := net.HardwareAddr{255, 255, 255, 255, 255, 255}
 
-		addrs := []net.IP{}
+		if bytes.Compare(dst, broadcast) != 0 {
+			addr := s.FDB.LookupMac(packet.VNID, dst)
 
-		addr := s.FDB.LookupMac(packet.VNID, dst)
-
-		if addr == nil {
-			go func() {
-				if dst.String() != "ff:ff:ff:ff:ff:ff" {
+			if addr == nil {
+				go func() {
 					s.vteps[packet.VNID].FDBMiss <- dst
-				}
-			}()
-			addrs = s.FDB.ListBroadcast(packet.VNID)
+				}()
+				continue
+			}
+
+			s.sendPacket(packet, addr)
 		} else {
-			addrs = append(addrs, addr)
-		}
-
-		for _, addr := range addrs {
-			dst := &net.UDPAddr{IP: addr, Port: 4789, Zone: ""}
-
-			_, err := s.packetConn.WriteTo(packet.Bytes(), dst)
-			if err != nil {
-				log.Printf("failed to send UDP: %s", err)
+			//Flood to all VTEPs
+			for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
+				s.sendPacket(packet, addr)
 			}
 		}
 	}
+}
+
+func (s *Listener) sendPacket(packet *Packet, ip net.IP) error {
+	dst := &net.UDPAddr{IP: ip, Port: 4789, Zone: ""}
+	_, err := s.packetConn.WriteTo(packet.Bytes(), dst)
+	return err
 }
 
 //FDBMiss gets a readonly sub for FDB misses

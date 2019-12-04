@@ -65,22 +65,30 @@ func CreateVTEP(vpcID int32, bridge *netlink.Bridge, dev string) (netlink.Link, 
 		return nil, fmt.Errorf("vpc %d already has a vtep", vpcID)
 	}
 
-	la := netlink.NewLinkAttrs()
-	la.Name = fmt.Sprintf(vtepPattern, vpcID)
-	la.MTU = 1000
+	/* MACVTAP */
+	// vtep := &netlink.Macvtap{
+	// 	Macvlan: netlink.Macvlan{
+	// 		LinkAttrs: netlink.LinkAttrs{
+	// 			Name:        fmt.Sprintf(vtepPattern, vpcID),
+	// 			MTU:         1000,
+	// 			ParentIndex: bridge.Index,
+	// 		},
+	// 		Mode: netlink.MACVLAN_MODE_BRIDGE,
+	// 	},
+	// }
 
 	vtep := &netlink.Tuntap{
-		LinkAttrs: la,
-		Mode:      netlink.TUNTAP_MODE_TAP,
+		Mode: netlink.TUNTAP_MODE_TAP,
+		LinkAttrs: netlink.LinkAttrs{
+			Name:        fmt.Sprintf(vtepPattern, vpcID),
+			MTU:         1000,
+			MasterIndex: bridge.Index,
+		},
+		Flags: netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
 	}
 
 	if err := netlink.LinkAdd(vtep); err != nil {
 		return nil, fmt.Errorf("failed to add link to netlink: %s", err)
-	}
-
-	if err := netlink.LinkSetMaster(vtep, bridge); err != nil {
-		netlink.LinkDel(vtep)
-		return nil, fmt.Errorf("failed to set vtep master: %s", err)
 	}
 
 	err := netlink.LinkSetUp(vtep)
