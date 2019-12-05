@@ -10,7 +10,10 @@ import (
 	"golang.org/x/sys/unix"
 
 	l2API "github.com/tcfw/vpc/pkg/api/v1/l2"
+	"github.com/tcfw/vpc/pkg/l2/controller"
+	sdnController "github.com/tcfw/vpc/pkg/l2/controller/bgp"
 	"github.com/tcfw/vpc/pkg/l2/transport"
+	transportTap "github.com/tcfw/vpc/pkg/l2/transport/tap"
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
 )
@@ -34,7 +37,7 @@ func Serve(port uint) {
 	}
 
 	go srv.Gc()
-	go srv.BGP()
+	go srv.SDN()
 	go srv.transport.Start()
 
 	l2API.RegisterL2ServiceServer(grpcServer, srv)
@@ -47,13 +50,13 @@ type Server struct {
 	m         sync.Mutex
 	watches   []chan l2API.StackChange
 	stacks    map[int32]*Stack
-	bgp       SDNController
-	transport *transport.Listener
+	sdn       controller.Controller
+	transport transport.Transport
 }
 
 //NewServer creates a new server instance
 func NewServer() (*Server, error) {
-	lis, err := transport.NewListener(4789, mtu)
+	lis, err := transportTap.NewListener(4789)
 	if err != nil {
 		return nil, err
 	}
@@ -64,12 +67,14 @@ func NewServer() (*Server, error) {
 		transport: lis,
 	}
 
+	srv.transport.SetMTU(mtu)
+
 	return srv, nil
 }
 
-//BGP starts the BGP speaker to advertise type-2 and type-3 EVPN routes
-func (s *Server) BGP() {
-	if s.bgp != nil {
+//SDN starts the SDN controller to advertise type-2 and type-3 routes
+func (s *Server) SDN() {
+	if s.sdn != nil {
 		return
 	}
 
@@ -89,28 +94,20 @@ func (s *Server) BGP() {
 
 	var rID net.IP
 
-	for _, ip4addr := range ip4s {
-		if !ip4addr.IP.IsLoopback() {
-			rID = ip4addr.IP
+	addrs := append(ip4s, ip6s...)
+	for _, addr := range addrs {
+		if !addr.IP.IsLoopback() && addr.IP.IsGlobalUnicast() {
+			rID = addr.IP
 			break
 		}
 	}
 
-	if rID == nil {
-		for _, ip6addr := range ip6s {
-			if !ip6addr.IP.IsLoopback() {
-				rID = ip6addr.IP
-				break
-			}
-		}
-	}
-
-	s.bgp, err = NewBGPSpeak(rID, bgpPeers())
+	s.sdn, err = sdnController.NewEVPNController(rID, bgpPeers())
 	if err != nil {
 		log.Fatalf("Failed to init BGP: %s", err)
 	}
 
-	if err := s.bgp.Start(); err != nil {
+	if err := s.sdn.Start(); err != nil {
 		log.Fatalf("Failed to start BGP: %s", err)
 	}
 
@@ -122,32 +119,31 @@ func (s *Server) AddStack(ctx context.Context, req *l2API.StackRequest) (*l2API.
 		return nil, fmt.Errorf("VPC ID out of range")
 	}
 
-	vtepdev := vtepDev()
+	vpc := uint32(req.VpcId)
 
 	s.m.Lock()
 	defer func() {
 		s.m.Unlock()
 	}()
 
-	stack, err := CreateVPCStack(req.VpcId, vtepdev)
+	stack, err := createStack(req.VpcId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stack: %s", err)
 	}
 
-	if err := s.transport.AddVTEP(uint32(req.VpcId), stack.Vtep.Attrs().Name); err != nil {
+	if err := s.transport.AddEP(vpc, stack.Bridge); err != nil {
 		return nil, fmt.Errorf("failed to start tap: %s", err)
 	}
 
-	go s.SubscribeL2Updates(req.VpcId)
+	missCh, _ := s.transport.ForwardingMiss(vpc)
+	go s.HandleMisses(vpc, missCh)
 
-	if err := s.bgp.RegisterEP(uint32(req.VpcId)); err != nil {
-		defer func() {
-			DeleteVPCStack(stack)
-		}()
+	if err := s.sdn.RegisterEP(vpc); err != nil {
+		defer deleteStack(stack)
 		return nil, fmt.Errorf("failed to register endpoint: %s", err)
 	}
 
-	status := getStackStatus(stack)
+	status := s.getStackStatus(stack)
 
 	s.logChange(&l2API.StackChange{
 		VpcId:  req.VpcId,
@@ -176,13 +172,13 @@ func (s *Server) GetStack(ctx context.Context, req *l2API.StackRequest) (*l2API.
 		return nil, err
 	}
 
-	if stack.Bridge == nil && stack.Vtep == nil {
+	if stack.Bridge == nil {
 		return nil, fmt.Errorf("Stack not created")
 	}
 
 	resp := &l2API.StackResponse{
 		Stack:  formatToAPIStack(stack),
-		Status: getStackStatus(stack),
+		Status: s.getStackStatus(stack),
 	}
 
 	return resp, nil
@@ -199,7 +195,7 @@ func (s *Server) StackStatus(ctx context.Context, req *l2API.StackRequest) (*l2A
 		return nil, err
 	}
 
-	return getStackStatus(stack), nil
+	return s.getStackStatus(stack), nil
 }
 
 //DeleteStack deletes all devices in the stack
@@ -213,18 +209,18 @@ func (s *Server) DeleteStack(ctx context.Context, req *l2API.StackRequest) (*l2A
 	var err error
 
 	if !ok {
-		stack, err = GetVPCStack(req.VpcId)
+		stack, err = getStack(req.VpcId)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	s.m.Lock()
-	defer func() {
-		s.m.Unlock()
-	}()
+	defer s.m.Unlock()
 
-	err = DeleteVPCStack(stack)
+	s.transport.DelEP(uint32(stack.VPCID))
+
+	err = deleteStack(stack)
 
 	s.logChange(&l2API.StackChange{
 		VpcId:  req.VpcId,
@@ -302,10 +298,10 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 		if req.ManuallyAdded {
 			hwaddr, _ = net.ParseMAC(req.ManualHwaddr)
 		}
-		s.bgp.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, hwaddr, net.ParseIP(ip))
+		s.sdn.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, hwaddr, net.ParseIP(ip))
 	}
 
-	if err := s.UpdateVLANTrunks(stack); err != nil {
+	if err := s.transport.AddVLAN(uint32(stack.VPCID), uint16(req.SubnetVlanId)); err != nil {
 		log.Printf("failed to update vlan trunk: %s", err)
 	}
 
@@ -359,21 +355,22 @@ func (s *Server) DeleteNIC(ctx context.Context, req *l2API.Nic) (*l2API.Empty, e
 	link, _ := GetNIC(stack, req.Id)
 
 	for _, ip := range req.Ip {
-		s.bgp.DeregisterMacIP(uint32(req.VpcId), req.Vlan, link.Attrs().HardwareAddr, net.ParseIP(ip))
+		s.sdn.DeregisterMacIP(uint32(req.VpcId), req.Vlan, link.Attrs().HardwareAddr, net.ParseIP(ip))
 	}
 
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	nic, ok := stack.Nics[req.Id]
+
+	if err := s.transport.DelVLAN(uint32(stack.VPCID), nic.vlan); err != nil {
+		log.Printf("failed to update vlan trunk: %s", err)
+	}
+
 	if ok && !nic.manual {
 		err = DeleteNIC(stack, req.Id)
 	} else if ok {
 		delete(stack.Nics, req.Id)
-	}
-
-	if err := s.UpdateVLANTrunks(stack); err != nil {
-		log.Printf("failed to update vlan trunk: %s", err)
 	}
 
 	s.logChange(&l2API.StackChange{
@@ -426,11 +423,6 @@ func formatToAPIStack(stack *Stack) *l2API.Stack {
 		APIStack.BridgeLinkName = stack.Bridge.Name
 	}
 
-	if stack.Vtep != nil {
-		APIStack.VtepLinkIndex = int32(stack.Vtep.Attrs().Index)
-		APIStack.VtepLinkName = stack.Vtep.Attrs().Name
-	}
-
 	return APIStack
 }
 
@@ -448,31 +440,6 @@ func formatToAPINic(stack *Stack, link netlink.Link, id string) *l2API.Nic {
 	}
 }
 
-//getStackStatus calculates the VPC stack status with interfaces and their 'up' status
-func getStackStatus(stack *Stack) *l2API.StackStatusResponse {
-	status := &l2API.StackStatusResponse{}
-
-	ok, err := HasVPCBridge(stack.VPCID)
-	if err != nil || !ok {
-		status.Bridge = l2API.LinkStatus_MISSING
-	} else if stack.Bridge.OperState != netlink.OperUp {
-		status.Bridge = l2API.LinkStatus_DOWN
-	} else {
-		status.Bridge = l2API.LinkStatus_UP
-	}
-
-	ok, err = HasVTEP(stack.VPCID)
-	if err != nil || !ok {
-		status.Vtep = l2API.LinkStatus_MISSING
-	} else if stack.Vtep.Attrs().OperState != netlink.OperUp {
-		status.Vtep = l2API.LinkStatus_DOWN
-	} else {
-		status.Vtep = l2API.LinkStatus_UP
-	}
-
-	return status
-}
-
 //logChange broadcasts stack changes to all subscribers
 func (s *Server) logChange(change *l2API.StackChange) {
 	for _, ch := range s.watches {
@@ -488,11 +455,39 @@ func (s *Server) fetchStack(vpcID int32) (*Stack, error) {
 
 	if !ok {
 		var err error
-		stack, err = GetVPCStack(vpcID)
+		stack, err = getStack(vpcID)
 		if err != nil {
 			return nil, err
 		}
 		s.stacks[vpcID] = stack
 	}
 	return stack, nil
+}
+
+//getStackStatus calculates the VPC stack status with interfaces and their 'up' status
+func (s *Server) getStackStatus(stack *Stack) *l2API.StackStatusResponse {
+	status := &l2API.StackStatusResponse{}
+
+	ok, err := hasBridge(stack.VPCID)
+	if err != nil || !ok {
+		status.Bridge = l2API.LinkStatus_MISSING
+	} else if stack.Bridge.OperState != netlink.OperUp {
+		status.Bridge = l2API.LinkStatus_DOWN
+	} else {
+		status.Bridge = l2API.LinkStatus_UP
+	}
+
+	switch s.transport.Status(uint32(stack.VPCID)) {
+	case transport.EPStatusUP:
+		status.Transport = l2API.LinkStatus_UP
+		break
+	case transport.EPStatusDOWN:
+		status.Transport = l2API.LinkStatus_DOWN
+		break
+	case transport.EPStatusMISSING:
+		status.Transport = l2API.LinkStatus_MISSING
+		break
+	}
+
+	return status
 }

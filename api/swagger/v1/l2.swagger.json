@@ -81,13 +81,6 @@
         "bridge_link_index": {
           "type": "integer",
           "format": "int32"
-        },
-        "vtep_link_name": {
-          "type": "string"
-        },
-        "vtep_link_index": {
-          "type": "integer",
-          "format": "int32"
         }
       }
     },
@@ -123,7 +116,7 @@
         "bridge": {
           "$ref": "#/definitions/l2LinkStatus"
         },
-        "vtep": {
+        "transport": {
           "$ref": "#/definitions/l2LinkStatus"
         }
       }

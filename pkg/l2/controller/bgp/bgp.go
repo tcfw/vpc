@@ -1,4 +1,4 @@
-package l2
+package bgp
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 	gobgp "github.com/osrg/gobgp/pkg/server"
 )
 
-//BGPSpeak contains a small gobgp server to advertise communities and routes between subnets
-type BGPSpeak struct {
+//EVPNController contains a small gobgp server to advertise communities and routes between subnets
+type EVPNController struct {
 	s     *gobgp.BgpServer
 	vnis  map[uint32]uint32
 	peers []string
@@ -23,9 +23,9 @@ type BGPSpeak struct {
 	rID   net.IP
 }
 
-//NewBGPSpeak inits a new BGP server. rID must match VTEP pub ip
-func NewBGPSpeak(rID net.IP, peers []string) (*BGPSpeak, error) {
-	srv := &BGPSpeak{
+//NewEVPNController inits a new BGP server. rID must match VTEP pub ip
+func NewEVPNController(rID net.IP, peers []string) (*EVPNController, error) {
+	srv := &EVPNController{
 		s:     gobgp.NewBgpServer(),
 		vnis:  map[uint32]uint32{},
 		peers: peers,
@@ -36,7 +36,7 @@ func NewBGPSpeak(rID net.IP, peers []string) (*BGPSpeak, error) {
 }
 
 //Start begins the bgp session and start advertising
-func (rbgp *BGPSpeak) Start() error {
+func (rbgp *EVPNController) Start() error {
 	go rbgp.s.Serve()
 
 	ctx := context.Background()
@@ -61,7 +61,7 @@ func (rbgp *BGPSpeak) Start() error {
 }
 
 //AddPeer adds a bgp neighbor with l2vpn-evpn capabilities
-func (rbgp *BGPSpeak) AddPeer(addr string) error {
+func (rbgp *EVPNController) AddPeer(addr string) error {
 	ctx := context.Background()
 
 	n := &api.Peer{
@@ -122,7 +122,7 @@ func (rbgp *BGPSpeak) AddPeer(addr string) error {
 }
 
 //RegisterEP adds a Type-3 EVPN route to the VTEP
-func (rbgp *BGPSpeak) RegisterEP(vni uint32) error {
+func (rbgp *EVPNController) RegisterEP(vni uint32) error {
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
 
 	nlri, _ := ptypes.MarshalAny(&api.EVPNEthernetAutoDiscoveryRoute{
@@ -142,7 +142,7 @@ func (rbgp *BGPSpeak) RegisterEP(vni uint32) error {
 }
 
 //addL2VPNEVPNNLRIPath executes the add path with given NLRI
-func (rbgp *BGPSpeak) addL2VPNEVPNNLRIPath(nlri *any.Any) error {
+func (rbgp *EVPNController) addL2VPNEVPNNLRIPath(nlri *any.Any) error {
 	family := &api.Family{
 		Afi:  api.Family_AFI_L2VPN,
 		Safi: api.Family_SAFI_EVPN,
@@ -160,7 +160,7 @@ func (rbgp *BGPSpeak) addL2VPNEVPNNLRIPath(nlri *any.Any) error {
 }
 
 //pathPAttrs default path attrs used in BGP paths
-func (rbgp *BGPSpeak) pathPAttrs() []*any.Any {
+func (rbgp *EVPNController) pathPAttrs() []*any.Any {
 	attrOrigin, _ := ptypes.MarshalAny(&api.OriginAttribute{
 		Origin: 0,
 	})
@@ -173,7 +173,7 @@ func (rbgp *BGPSpeak) pathPAttrs() []*any.Any {
 }
 
 //DeregisterEP removes the Type-3 EVPN route to the VTEP
-func (rbgp *BGPSpeak) DeregisterEP(vni uint32) error {
+func (rbgp *EVPNController) DeregisterEP(vni uint32) error {
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
 
 	nlri, _ := ptypes.MarshalAny(&api.EVPNEthernetAutoDiscoveryRoute{
@@ -193,7 +193,7 @@ func (rbgp *BGPSpeak) DeregisterEP(vni uint32) error {
 }
 
 //delL2VPNEVPNNLRIPath executes the delete path of given NLRI
-func (rbgp *BGPSpeak) delL2VPNEVPNNLRIPath(nlri *any.Any) error {
+func (rbgp *EVPNController) delL2VPNEVPNNLRIPath(nlri *any.Any) error {
 	family := &api.Family{
 		Afi:  api.Family_AFI_L2VPN,
 		Safi: api.Family_SAFI_EVPN,
@@ -209,7 +209,7 @@ func (rbgp *BGPSpeak) delL2VPNEVPNNLRIPath(nlri *any.Any) error {
 }
 
 //updateASNPolicy updates the defined ASN policy with all known VNIs
-func (rbgp *BGPSpeak) updateASNPolicy() {
+func (rbgp *EVPNController) updateASNPolicy() {
 
 	list := []string{}
 
@@ -227,7 +227,7 @@ func (rbgp *BGPSpeak) updateASNPolicy() {
 }
 
 //RegisterMacIP adds a Type-2 EVPN route to a local mac/ip
-func (rbgp *BGPSpeak) RegisterMacIP(vni uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error {
+func (rbgp *EVPNController) RegisterMacIP(vni uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error {
 	log.Printf("REGISTER MAC: %+v %+v %+v %+v\n", vni, vlan, mac, ip)
 
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
@@ -245,7 +245,7 @@ func (rbgp *BGPSpeak) RegisterMacIP(vni uint32, vlan uint32, mac net.HardwareAdd
 }
 
 //DeregisterMacIP removes the Type-2 EVPN route to a local mac/ip
-func (rbgp *BGPSpeak) DeregisterMacIP(vni uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error {
+func (rbgp *EVPNController) DeregisterMacIP(vni uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error {
 	log.Printf("DEREG MAC: %+v %+v %+v %+v\n", vni, vlan, mac, ip)
 
 	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
@@ -263,7 +263,7 @@ func (rbgp *BGPSpeak) DeregisterMacIP(vni uint32, vlan uint32, mac net.HardwareA
 }
 
 //LookupIP resolve l3 requests from bridge
-func (rbgp *BGPSpeak) LookupIP(vni uint32, vlan uint16, ip net.IP) (net.HardwareAddr, net.IP, error) {
+func (rbgp *EVPNController) LookupIP(vni uint32, vlan uint16, ip net.IP) (net.HardwareAddr, net.IP, error) {
 	log.Printf("LOOKUP IP: %+v %d, %+v\n", vni, vlan, ip)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
@@ -322,7 +322,7 @@ func (rbgp *BGPSpeak) LookupIP(vni uint32, vlan uint16, ip net.IP) (net.Hardware
 }
 
 //LookupMac resolves l2 requets for VTEP forwarding
-func (rbgp *BGPSpeak) LookupMac(vni uint32, mac net.HardwareAddr) (net.IP, error) {
+func (rbgp *EVPNController) LookupMac(vni uint32, mac net.HardwareAddr) (net.IP, error) {
 	log.Printf("LOOKUP MAC: %d %s\n", vni, mac)
 
 	timeout := 4 * time.Second
@@ -381,7 +381,7 @@ func (rbgp *BGPSpeak) LookupMac(vni uint32, mac net.HardwareAddr) (net.IP, error
 }
 
 //BroadcastEndpoints adds all known vteps for a given VNI to the VTEP FDB for broadcast traffic
-func (rbgp *BGPSpeak) BroadcastEndpoints(vni uint32) ([]net.IP, error) {
+func (rbgp *EVPNController) BroadcastEndpoints(vni uint32) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 

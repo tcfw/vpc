@@ -50,23 +50,6 @@ func clearNICVlans(link netlink.Link) error {
 	return nil
 }
 
-//getNicVlans gets the vlans of a particular nic
-func getNicVlans(index int32) uint16 {
-	links, _ := netlink.BridgeVlanList()
-	for linkIndex, linkVlans := range links {
-		if linkIndex == index && len(linkVlans) > 0 {
-			return linkVlans[0].Vid
-		}
-	}
-
-	return 1
-}
-
-//enableBridgeVlanFiltering sets vlan filtering on the bridge
-func enableBridgeVlanFiltering(bridgeName string) error {
-	return ioutil.WriteFile(fmt.Sprintf("/sys/devices/virtual/net/%s/bridge/vlan_filtering", bridgeName), []byte("1"), 0644)
-}
-
 //UpdateVLANTrunks reapplies required VLANs to VTEP for trunking
 func (s *Server) UpdateVLANTrunks(stack *Stack) error {
 	if err := clearNICVlans(stack.Vtep); err != nil {

@@ -2,16 +2,17 @@ package l2
 
 import (
 	"fmt"
+	"io/ioutil"
 
 	"github.com/vishvananda/netlink"
 )
 
 const (
-	vpcBridgePattern = "b-%d"
+	bridgePattern = "b-%d"
 )
 
-//GetVPCBridge finds the bridge associated with a VPC
-func GetVPCBridge(vpcID int32) (netlink.Link, error) {
+//getBridge finds the bridge associated with a VPC
+func getBridge(vpcID int32) (netlink.Link, error) {
 	handle, err := netlink.NewHandle(netlink.FAMILY_ALL)
 	if err != nil {
 		return nil, err
@@ -25,7 +26,7 @@ func GetVPCBridge(vpcID int32) (netlink.Link, error) {
 		return nil, err
 	}
 
-	ifaceName := fmt.Sprintf(vpcBridgePattern, vpcID)
+	ifaceName := fmt.Sprintf(bridgePattern, vpcID)
 
 	for _, link := range links {
 		if link.Type() == "bridge" && link.Attrs().Name == ifaceName {
@@ -35,23 +36,23 @@ func GetVPCBridge(vpcID int32) (netlink.Link, error) {
 	return nil, nil
 }
 
-//HasVPCBridge checks if a bridge exists by trying to get it
-func HasVPCBridge(vpcID int32) (bool, error) {
-	br, err := GetVPCBridge(vpcID)
+//hasBridge checks if a bridge exists by trying to get it
+func hasBridge(vpcID int32) (bool, error) {
+	br, err := getBridge(vpcID)
 	if err != nil {
 		return false, err
 	}
 	return br != nil, nil
 }
 
-//CreateVPCBridge creates a new linux bridge for a VPC
-func CreateVPCBridge(vpcID int32) (*netlink.Bridge, error) {
-	if ok, _ := HasVPCBridge(vpcID); ok {
+//createBridge creates a new linux bridge for a VPC
+func createBridge(vpcID int32) (*netlink.Bridge, error) {
+	if ok, _ := hasBridge(vpcID); ok {
 		return nil, fmt.Errorf("vpc %d already has a bridge", vpcID)
 	}
 
 	la := netlink.NewLinkAttrs()
-	la.Name = fmt.Sprintf(vpcBridgePattern, vpcID)
+	la.Name = fmt.Sprintf(bridgePattern, vpcID)
 	la.MTU = 1000
 
 	br := &netlink.Bridge{LinkAttrs: la}
@@ -69,16 +70,48 @@ func CreateVPCBridge(vpcID int32) (*netlink.Bridge, error) {
 	return br, err
 }
 
-//DeleteVPCBridge deletes a linux bridge for a VPC
-func DeleteVPCBridge(vpcID int32) error {
-	if ok, _ := HasVPCBridge(vpcID); !ok {
+//enableBridgeVlanFiltering sets vlan filtering on the bridge
+func enableBridgeVlanFiltering(bridgeName string) error {
+	return ioutil.WriteFile(fmt.Sprintf("/sys/devices/virtual/net/%s/bridge/vlan_filtering", bridgeName), []byte("1"), 0644)
+}
+
+//deleteBridge deletes a linux bridge for a VPC
+func deleteBridge(vpcID int32) error {
+	if ok, _ := hasBridge(vpcID); !ok {
 		return fmt.Errorf("vpc %d bridge does not exist", vpcID)
 	}
 
-	br, err := GetVPCBridge(vpcID)
+	br, err := getBridge(vpcID)
 	if err != nil {
 		return err
 	}
 
 	return netlink.LinkDel(br)
+}
+
+func getBridgeLinks(brIndex int, vpcID int32) ([]netlink.Link, error) {
+	slaveLinks := []netlink.Link{}
+
+	handle, err := netlink.NewHandle(netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		handle.Delete()
+	}()
+
+	links, err := handle.LinkList()
+	if err != nil {
+		return nil, err
+	}
+
+	vtepName := fmt.Sprintf("t-%d", vpcID)
+
+	for _, link := range links {
+		if link.Attrs().MasterIndex == brIndex && link.Attrs().Name != vtepName {
+			slaveLinks = append(slaveLinks, link)
+		}
+	}
+
+	return slaveLinks, nil
 }

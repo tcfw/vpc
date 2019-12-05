@@ -12,8 +12,6 @@ message Stack {
 	int32 vpc_id = 1;
 	string bridge_link_name = 2;
 	int32 bridge_link_index = 3;
-	string vtep_link_name = 4;
-	int32 vtep_link_index = 5;
 }
 
 message StackResponse {
@@ -29,7 +27,7 @@ enum LinkStatus {
 
 message StackStatusResponse {
 	LinkStatus bridge = 1;
-	LinkStatus vtep = 2;
+	LinkStatus transport = 2;
 }
 
 message StackChange {

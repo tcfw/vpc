@@ -21,12 +21,5 @@ func L2APIToStack(l2Stack *l2API.Stack) (*l2.Stack, error) {
 
 	stack.Bridge = br.(*netlink.Bridge)
 
-	vtep, err := netlink.LinkByIndex(int(l2Stack.VtepLinkIndex))
-	if err != nil {
-		return nil, fmt.Errorf("Failed to find vtep: %s", err)
-	}
-
-	stack.Vtep = vtep.(*netlink.Tuntap)
-
 	return stack, nil
 }

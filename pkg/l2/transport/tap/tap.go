@@ -1,28 +1,34 @@
-package transport
+package tap
 
 import (
-	"net"
+	"log"
 
+	"github.com/tcfw/vpc/pkg/l2/transport"
+	"github.com/vishvananda/netlink"
+
+	"github.com/google/gopacket/pcap"
 	"github.com/songgao/packets/ethernet"
 	"github.com/songgao/water"
 )
 
-type vtep struct {
+type tap struct {
 	out     chan ethernet.Frame //from bridge
-	in      chan *Packet        //from vtep
+	in      chan *Packet        //from tap
 	vnid    uint32
 	tuntap  *water.Interface
+	handler *pcap.Handle
+	iface   netlink.Link
 	mtu     int
 	lis     *Listener
-	FDBMiss chan net.HardwareAddr
+	FDBMiss chan transport.ForwardingMiss
 }
 
-func (v *vtep) Stop() {
+func (v *tap) Stop() {
 	close(v.FDBMiss)
 	close(v.in)
 }
 
-func (v *vtep) Handle() {
+func (v *tap) Handle() {
 	go v.pipeIn()
 
 	// var buf bytes.Buffer
@@ -46,7 +52,31 @@ func (v *vtep) Handle() {
 	}
 }
 
-func (v *vtep) pipeIn() {
+func (v *tap) HandlePCAP() {
+	go v.pipeInPCAP()
+
+	for {
+		frame, _, err := v.handler.ReadPacketData()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		v.lis.tx <- NewPacket(v.vnid, 0, frame)
+	}
+}
+
+func (v *tap) pipeInPCAP() {
+	for {
+		packet, ok := <-v.in
+		if !ok {
+			return
+		}
+
+		v.handler.WritePacketData(packet.InnerFrame)
+	}
+}
+
+func (v *tap) pipeIn() {
 	for {
 		packet, ok := <-v.in
 		if !ok {

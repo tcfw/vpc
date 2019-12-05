@@ -1,4 +1,4 @@
-package transport
+package tap
 
 import (
 	"testing"
@@ -9,7 +9,8 @@ import (
 )
 
 func TestListen(t *testing.T) {
-	lis, err := NewListener(4789, 1000)
+	lis, err := NewListener(4789)
+	lis.SetMTU(1000)
 
 	assert.NoError(t, err)
 
@@ -24,6 +25,6 @@ func TestListen(t *testing.T) {
 	err = netlink.LinkAdd(tuntap)
 	assert.NoError(t, err)
 
-	err = lis.AddVTEP(5, vtepname)
-	assert.NoError(t, err)
+	// err = lis.AddEP(5, vtepname)
+	// assert.NoError(t, err)
 }

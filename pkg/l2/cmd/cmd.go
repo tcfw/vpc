@@ -17,7 +17,6 @@ func NewDefaultCommand() *cobra.Command {
 		},
 	}
 
-	cmds.AddCommand(NewCheckCmd())
 	cmds.AddCommand(NewServeCmd())
 	cmds.AddCommand(NewWatchCmd())
 

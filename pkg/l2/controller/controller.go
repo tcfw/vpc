@@ -1,9 +1,11 @@
-package l2
+package controller
 
-import "net"
+import (
+	"net"
+)
 
-//SDNController s allows storing and publishing of endpoints and IPs
-type SDNController interface {
+//Controller s allows storing and publishing of endpoints and IPs
+type Controller interface {
 	Start() error
 
 	RegisterMacIP(uint32, uint32, net.HardwareAddr, net.IP) error
