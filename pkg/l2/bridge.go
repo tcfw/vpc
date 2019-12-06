@@ -53,7 +53,7 @@ func createBridge(vpcID int32) (*netlink.Bridge, error) {
 
 	la := netlink.NewLinkAttrs()
 	la.Name = fmt.Sprintf(bridgePattern, vpcID)
-	la.MTU = 1000
+	la.MTU = 2000
 
 	br := &netlink.Bridge{LinkAttrs: la}
 

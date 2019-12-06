@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/google/gopacket/pcap"
 	"github.com/tcfw/vpc/pkg/l2/transport"
 
 	"github.com/songgao/packets/ethernet"
@@ -59,11 +60,6 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// handler, err := pcap.OpenLive(tun, int32(s.mtu), true, pcap.BlockForever)
-	// if err != nil {
-	// 	return err
-	// }
-
 	tapIface := &netlink.Tuntap{
 		Mode: netlink.TUNTAP_MODE_TAP,
 		LinkAttrs: netlink.LinkAttrs{
@@ -82,6 +78,28 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 		return err
 	}
 
+	// ih, err := pcap.NewInactiveHandle(tapIface.Name)
+	// if err != nil {
+	// 	return err
+	// }
+	// defer ih.CleanUp()
+
+	// ih.SetImmediateMode(true)
+	// ih.SetPromisc(true)
+	// ih.SetSnapLen(65535)
+	// ih.SetTimeout(pcap.BlockForever)
+	// // ih.SetBufferSize(int(s.mtu))
+	// handler, err := ih.Activate()
+
+	handler, err := pcap.OpenLive(tapIface.Name, 65535, false, pcap.BlockForever)
+	if err != nil {
+		return err
+	}
+
+	handler.SetDirection(pcap.DirectionOut)
+	// handler.SetBPFFilter("outbound")
+	// handler.
+
 	tapHandler := &tap{
 		vnid:    vnid,
 		out:     make(chan ethernet.Frame),
@@ -90,7 +108,7 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 		iface:   tapIface,
 		mtu:     int(s.mtu),
 		FDBMiss: make(chan transport.ForwardingMiss),
-		// handler: handler,
+		handler: handler,
 	}
 
 	config := water.Config{
@@ -109,8 +127,8 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 
 	log.Println("registered new VTEP")
 
-	go tapHandler.Handle()
-	// go vtep.HandlePCAP()
+	// go tapHandler.Handle()
+	go tapHandler.HandlePCAP()
 
 	return nil
 }
@@ -118,6 +136,9 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 //DelEP stops & deletes VTEP activity
 func (s *Listener) DelEP(vnid uint32) error {
 	s.vteps[vnid].Stop()
+
+	netlink.LinkDel(s.vteps[vnid].iface)
+
 	delete(s.vteps, vnid)
 
 	return nil

@@ -13,13 +13,16 @@ import (
 	"github.com/tcfw/vpc/pkg/l2/controller"
 	sdnController "github.com/tcfw/vpc/pkg/l2/controller/bgp"
 	"github.com/tcfw/vpc/pkg/l2/transport"
-	transportTap "github.com/tcfw/vpc/pkg/l2/transport/tap"
+
+	// transportTap "github.com/tcfw/vpc/pkg/l2/transport/tap"
+	transportVTEP "github.com/tcfw/vpc/pkg/l2/transport/vtep"
+
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
 )
 
 const (
-	mtu = 1500
+	mtu = 2000
 )
 
 //Serve start the GRPC server
@@ -56,15 +59,22 @@ type Server struct {
 
 //NewServer creates a new server instance
 func NewServer() (*Server, error) {
-	lis, err := transportTap.NewListener(4789)
+	// transport, err := transportTap.NewListener(4789)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	pubLink, err := netlink.LinkByName(vtepDev())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("faild to init VTEP transport: %s", err)
 	}
+
+	transport := transportVTEP.NewVTEPTransport(pubLink)
 
 	srv := &Server{
 		watches:   []chan l2API.StackChange{},
 		stacks:    map[int32]*Stack{},
-		transport: lis,
+		transport: transport,
 	}
 
 	srv.transport.SetMTU(mtu)

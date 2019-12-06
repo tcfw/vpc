@@ -120,10 +120,8 @@ func (tbl *FDB) gc() {
 		for k, entry := range tbl.entries {
 			//Delete entries older than 1 minute
 			if entry.updated.Unix() < time.Now().Add(-3*time.Minute).Unix() {
-
 				log.Printf("FDB GC: %s %s", entry.mac, entry.rdst)
 				expired = append(expired, k)
-
 			}
 		}
 

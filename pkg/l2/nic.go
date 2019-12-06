@@ -24,15 +24,11 @@ func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error)
 		return nil, fmt.Errorf("subnet out of range")
 	}
 
-	la := netlink.NewLinkAttrs()
-	la.Name = fmt.Sprintf(nicPattern, id)
-	la.MTU = 1000
-
 	nic := &netlink.Macvtap{
 		Macvlan: netlink.Macvlan{
 			LinkAttrs: netlink.LinkAttrs{
 				Name:        fmt.Sprintf(nicPattern, id),
-				MTU:         1000,
+				MTU:         2000,
 				ParentIndex: stack.Bridge.Index,
 			},
 			Mode: netlink.MACVLAN_MODE_BRIDGE,

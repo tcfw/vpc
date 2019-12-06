@@ -8,17 +8,31 @@ import (
 
 //Transport are drivers for handling lower level packet actions
 type Transport interface {
+	//Start begins the listener
 	Start() error
+
+	//SetMTU sets the default MTU of added interfaces
 	SetMTU(mtu int32) error
 
+	//AddEP adds a new VNID endpoint device to a given bridge
 	AddEP(vnid uint32, br *netlink.Bridge) error
+
+	//DelEP removes a  VNID endpoint device
 	DelEP(vnid uint32) error
+
+	//Status gives the device status of the VNID endpoint device
 	Status(vnid uint32) EPStatus
 
+	//AddVLAN adds a vlan to the trunking device
 	AddVLAN(vnid uint32, vlan uint16) error
+
+	//DelVLAN removes a vlan from the trunking device
 	DelVLAN(vnid uint32, vlan uint16) error
 
+	//AddForwardEntry adds a forwarding entry for the trunking devices to relay packets to other endpoints
 	AddForwardEntry(vnid uint32, mac net.HardwareAddr, ip net.IP) error
+
+	//ForwardingMiss provides a readonly channel to react to missing forwarding entries
 	ForwardingMiss(vnid uint32) (<-chan ForwardingMiss, error)
 }
 

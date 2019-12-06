@@ -3,6 +3,9 @@ package tap
 import (
 	"log"
 
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+
 	"github.com/tcfw/vpc/pkg/l2/transport"
 	"github.com/vishvananda/netlink"
 
@@ -53,15 +56,17 @@ func (v *tap) Handle() {
 }
 
 func (v *tap) HandlePCAP() {
-	go v.pipeInPCAP()
+	go v.pipeIn()
+
+	src := gopacket.NewPacketSource(v.handler, layers.LayerTypeEthernet)
 
 	for {
-		frame, _, err := v.handler.ReadPacketData()
-		if err != nil {
-			log.Println(err)
+		// frame, _, err := v.handler.ZeroCopyReadPacketData()
+		frame, ok := <-src.Packets()
+		if !ok {
 			return
 		}
-		v.lis.tx <- NewPacket(v.vnid, 0, frame)
+		v.lis.tx <- NewPacket(v.vnid, 0, frame.Data())
 	}
 }
 
@@ -72,7 +77,9 @@ func (v *tap) pipeInPCAP() {
 			return
 		}
 
-		v.handler.WritePacketData(packet.InnerFrame)
+		if err := v.handler.WritePacketData(packet.InnerFrame); err != nil {
+			log.Printf("failed to write packet")
+		}
 	}
 }
 
