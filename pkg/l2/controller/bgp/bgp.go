@@ -60,6 +60,11 @@ func (rbgp *EVPNController) Start() error {
 	return nil
 }
 
+//Stop stops all bgp sessions and terminates the bgp speaker
+func (rbgp *EVPNController) Stop() {
+	rbgp.s.StopBgp(context.Background(), &api.StopBgpRequest{})
+}
+
 //AddPeer adds a bgp neighbor with l2vpn-evpn capabilities
 func (rbgp *EVPNController) AddPeer(addr string) error {
 	ctx := context.Background()

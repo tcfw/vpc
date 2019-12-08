@@ -57,8 +57,8 @@ func (v *VTEPTransport) AddEP(vnid uint32, br *netlink.Bridge) error {
 		},
 		VxlanId:      int(vnid),
 		VtepDevIndex: v.pubIface.Attrs().Index,
-		L2miss:       true, //TODO(tcfw) inject l2 req to FDB
-		L3miss:       true, //TODO(tcfw) track l3 and response to neighbor reqs
+		L2miss:       true,
+		L3miss:       true,
 		Learning:     false,
 		Proxy:        true,
 		Port:         4789,

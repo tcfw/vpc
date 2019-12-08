@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 
@@ -45,7 +48,14 @@ func Serve(port uint) {
 
 	l2API.RegisterL2ServiceServer(grpcServer, srv)
 	log.Println("Starting gRPC server")
-	grpcServer.Serve(lis)
+	go grpcServer.Serve(lis)
+
+	killSignal := make(chan os.Signal, 1)
+	signal.Notify(killSignal, syscall.SIGINT, syscall.SIGTERM)
+
+	<-killSignal
+
+	srv.sdn.Stop()
 }
 
 //Server l2 API server
