@@ -1,7 +1,13 @@
-# VPC
-Create simple VxLAN based VPC's written in (mostly) Go using Linux bridges/netlinks, iptables & network namespaces!
+<div style="text-align: center;">
+<h1>VPC</h1>
+Create simple VxLAN based VPC's written in (mostly) Go using Linux bridges/netlink, iptables & network namespaces.
+<p>
+<a href="https://goreportcard.com/report/github.com/tcfw/vpc" title="Go Report Card"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/tcfw/vpc"></a>
+</p>
+</div>
+<hr/>
 
-### Why?
+## Why?
 For fun and to learn!
 
 # Schematic
@@ -27,8 +33,11 @@ Each 'tenant' is separated by VxLAN VNI's and each Subnet is protected via inner
 ## L2
 The L2 agent provides a GRPC API to create bridges, VxLAN VTEPs and manage VLAN tagging on the bridges.
 
+### Transports
+Can set up to use a linux VxLAN device, or use a TAP device with VxLAN encapsulation. The TAP device allows easier handling of ARP/ICMPv6 soliciations in the future.
+
 ## L3
-The L3 agent provides the functionality to create the virtual router namespaces and provide simple DHCP capabilities.
+The L3 agent provides the functionality to create the virtual router namespaces and provide simple DHCP/NAT & routing capabilities.
 
 # Similar architectures
 [Openstacks Neutron](https://wiki.openstack.org/wiki/Neutron) in Linux bridge mode.
