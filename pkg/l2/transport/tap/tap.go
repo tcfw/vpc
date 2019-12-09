@@ -56,18 +56,6 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 		return nil, err
 	}
 
-	// ih, err := pcap.NewInactiveHandle(tapIface.Name)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer ih.CleanUp()
-
-	// ih.SetImmediateMode(true)
-	// ih.SetPromisc(true)
-	// ih.SetSnapLen(65535)
-	// ih.SetTimeout(pcap.BlockForever)
-	// handler, err := ih.Activate()
-
 	handler, err := pcap.OpenLive(tapIface.Name, 65535, false, pcap.BlockForever)
 	if err != nil {
 		return nil, err
@@ -111,24 +99,15 @@ func (v *Tap) Stop() {
 func (v *Tap) Handle() {
 	go v.pipeIn()
 
-	// var buf bytes.Buffer
-	var frame ethernet.Frame
+	buf := make([]byte, v.mtu)
 	for {
-		// buf.Reset()
-		frame.Resize(v.mtu)
-
-		// _, err := buf.ReadFrom(v.tuntap) //TODO(tcfw) metrics?
-		n, err := v.tuntap.Read([]byte(frame))
+		n, err := v.tuntap.Read(buf)
 		if err != nil {
 			close(v.out)
 			return
 		}
 
-		frame = frame[:n]
-
-		// p := NewPacket(v.vnid, 0, buf.Bytes())
-		p := NewPacket(v.vnid, 0, frame)
-		v.lis.tx <- p
+		v.lis.tx <- NewPacket(v.vnid, 0, buf[:n])
 	}
 }
 
@@ -137,9 +116,7 @@ func (v *Tap) HandlePCAP() {
 	go v.pipeIn()
 
 	src := gopacket.NewPacketSource(v.handler, layers.LayerTypeEthernet)
-
 	for {
-		// frame, _, err := v.handler.ZeroCopyReadPacketData()
 		frame, ok := <-src.Packets()
 		if !ok {
 			return
