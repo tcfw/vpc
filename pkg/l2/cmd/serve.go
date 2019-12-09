@@ -12,6 +12,8 @@ func NewServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Starts the l2 agent in daemon",
 		Run: func(cmd *cobra.Command, args []string) {
+			go l2.StartPProf(8024)
+
 			port, _ := cmd.Flags().GetUint("port")
 			l2.Serve(port)
 		},

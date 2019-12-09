@@ -31,14 +31,14 @@ func NewCreateCmd() *cobra.Command {
 					continue
 				}
 
-				conn, err := grpc.Dial(fmt.Sprintf("127.0.0.1:%d", port), grpc.WithInsecure())
+				l2conn, err := grpc.Dial(fmt.Sprintf("127.0.0.1:%d", port), grpc.WithInsecure())
 				if err != nil {
 					log.Println(err)
 					return
 				}
-				defer conn.Close()
+				defer l2conn.Close()
 
-				l2cli := l2API.NewL2ServiceClient(conn)
+				l2cli := l2API.NewL2ServiceClient(l2conn)
 
 				ctx := context.Background()
 

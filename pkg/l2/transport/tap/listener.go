@@ -7,22 +7,15 @@ import (
 	"net"
 	"sync"
 
-	"github.com/google/gopacket/pcap"
 	"github.com/tcfw/vpc/pkg/l2/transport"
 
-	"github.com/songgao/packets/ethernet"
-	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
-)
-
-const (
-	vtepPattern = "t-%d"
 )
 
 //Listener holds all vtep VNIs
 type Listener struct {
 	mu         sync.Mutex
-	vteps      map[uint32]*tap
+	vteps      map[uint32]*Tap
 	packetConn net.PacketConn
 	mtu        int32
 	tx         chan *Packet
@@ -35,9 +28,9 @@ type Listener struct {
 func NewListener(port int) (*Listener, error) {
 	lis := &Listener{
 		port:  port,
-		vteps: map[uint32]*tap{},
+		vteps: map[uint32]*Tap{},
 		mtu:   1500,
-		tx:    make(chan *Packet),
+		tx:    make(chan *Packet, 1000),
 		FDB:   NewFDB(),
 		vlans: map[uint16]int{},
 	}
@@ -60,68 +53,10 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tapIface := &netlink.Tuntap{
-		Mode: netlink.TUNTAP_MODE_TAP,
-		LinkAttrs: netlink.LinkAttrs{
-			Name:        fmt.Sprintf(vtepPattern, vnid),
-			MTU:         int(s.mtu),
-			MasterIndex: br.Index,
-		},
-		Flags: netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
-	}
-
-	if err := netlink.LinkAdd(tapIface); err != nil {
-		return err
-	}
-
-	if err := netlink.LinkSetUp(tapIface); err != nil {
-		return err
-	}
-
-	// ih, err := pcap.NewInactiveHandle(tapIface.Name)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer ih.CleanUp()
-
-	// ih.SetImmediateMode(true)
-	// ih.SetPromisc(true)
-	// ih.SetSnapLen(65535)
-	// ih.SetTimeout(pcap.BlockForever)
-	// // ih.SetBufferSize(int(s.mtu))
-	// handler, err := ih.Activate()
-
-	handler, err := pcap.OpenLive(tapIface.Name, 65535, false, pcap.BlockForever)
+	tapHandler, err := NewTap(s, vnid, int(s.mtu), br)
 	if err != nil {
 		return err
 	}
-
-	handler.SetDirection(pcap.DirectionOut)
-	// handler.SetBPFFilter("outbound")
-	// handler.
-
-	tapHandler := &tap{
-		vnid:    vnid,
-		out:     make(chan ethernet.Frame),
-		in:      make(chan *Packet),
-		lis:     s,
-		iface:   tapIface,
-		mtu:     int(s.mtu),
-		FDBMiss: make(chan transport.ForwardingMiss),
-		handler: handler,
-	}
-
-	config := water.Config{
-		DeviceType: water.TAP,
-	}
-	config.Name = tapIface.Name
-	config.MultiQueue = true
-
-	ifce, err := water.New(config)
-	if err != nil {
-		return fmt.Errorf("failed to init tun dev: %s", err)
-	}
-	tapHandler.tuntap = ifce
 
 	s.vteps[vnid] = tapHandler
 
@@ -181,7 +116,10 @@ func (s *Listener) handleIn(addr net.Addr, raw []byte) {
 }
 
 func (s *Listener) handleOut() {
+	var buf bytes.Buffer
+
 	for {
+		buf.Reset()
 		packet, ok := <-s.tx
 		if !ok {
 			return
@@ -192,6 +130,11 @@ func (s *Listener) handleOut() {
 		dst := packet.InnerFrame.Destination()
 		broadcast := net.HardwareAddr{255, 255, 255, 255, 255, 255}
 
+		n, err := packet.WriteTo(&buf)
+		if err != nil {
+			log.Fatalf("Failed to write packet: %s", err)
+		}
+
 		if bytes.Compare(dst, broadcast) != 0 {
 			addr := s.FDB.LookupMac(packet.VNID, dst)
 
@@ -200,19 +143,20 @@ func (s *Listener) handleOut() {
 				continue
 			}
 
-			s.sendPacket(packet, addr)
+			s.sendPacket(buf.Bytes()[:n], addr)
 		} else {
-			//Flood to all VTEPs
+			//Flood to all EPs
 			for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
-				s.sendPacket(packet, addr)
+				s.sendPacket(buf.Bytes()[:n], addr)
 			}
 		}
 	}
 }
 
-func (s *Listener) sendPacket(packet *Packet, ip net.IP) error {
+//sendPacket forwards a data to a given endpoint
+func (s *Listener) sendPacket(data []byte, ip net.IP) error {
 	dst := &net.UDPAddr{IP: ip, Port: 4789, Zone: ""}
-	_, err := s.packetConn.WriteTo(packet.Bytes(), dst)
+	_, err := s.packetConn.WriteTo(data, dst)
 	return err
 }
 

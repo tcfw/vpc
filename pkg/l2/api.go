@@ -17,8 +17,8 @@ import (
 	sdnController "github.com/tcfw/vpc/pkg/l2/controller/bgp"
 	"github.com/tcfw/vpc/pkg/l2/transport"
 
-	// transportTap "github.com/tcfw/vpc/pkg/l2/transport/tap"
-	transportVTEP "github.com/tcfw/vpc/pkg/l2/transport/vtep"
+	transportTap "github.com/tcfw/vpc/pkg/l2/transport/tap"
+	// transportVTEP "github.com/tcfw/vpc/pkg/l2/transport/vtep"
 
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
@@ -69,17 +69,17 @@ type Server struct {
 
 //NewServer creates a new server instance
 func NewServer() (*Server, error) {
-	// transport, err := transportTap.NewListener(4789)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	pubLink, err := netlink.LinkByName(vtepDev())
+	transport, err := transportTap.NewListener(4789)
 	if err != nil {
-		return nil, fmt.Errorf("faild to init VTEP transport: %s", err)
+		return nil, err
 	}
 
-	transport := transportVTEP.NewVTEPTransport(pubLink)
+	// pubLink, err := netlink.LinkByName(vtepDev())
+	// if err != nil {
+	// 	return nil, fmt.Errorf("faild to init VTEP transport: %s", err)
+	// }
+
+	// transport := transportVTEP.NewVTEPTransport(pubLink)
 
 	srv := &Server{
 		watches:   []chan l2API.StackChange{},

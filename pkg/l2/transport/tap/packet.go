@@ -70,19 +70,43 @@ func FromBytes(bytesReader io.Reader) (*Packet, error) {
 func (p *Packet) Bytes() []byte {
 	var buf bytes.Buffer
 
-	binary.Write(&buf, binary.BigEndian, p.Flags)
+	n, _ := p.WriteTo(&buf)
+
+	return bytes.TrimRight(buf.Bytes()[:n], "\x00")
+}
+
+//WriteTo writes a pakcet to a give writer
+func (p *Packet) WriteTo(w io.Writer) (n int64, err error) {
+	ni, err := w.Write([]byte{byte(p.Flags)})
+	n += int64(ni)
+	if err != nil {
+		return n, err
+	}
 
 	groupPolicy := make([]byte, 4)
 	binary.BigEndian.PutUint32(groupPolicy, p.GroupPolicy)
-	binary.Write(&buf, binary.BigEndian, groupPolicy[1:])
+	ni, err = w.Write(groupPolicy[1:])
+	n += int64(ni)
+	if err != nil {
+		return n, err
+	}
 
 	vnid := make([]byte, 4)
 	binary.BigEndian.PutUint32(vnid, p.VNID)
-	binary.Write(&buf, binary.BigEndian, vnid[1:])
+	ni, err = w.Write(vnid[1:])
+	n += int64(ni)
+	if err != nil {
+		return n, err
+	}
 
-	binary.Write(&buf, binary.BigEndian, uint8(0)) //resv
+	ni, err = w.Write([]byte{byte(0)}) //resv
+	n += int64(ni)
+	if err != nil {
+		return n, err
+	}
 
-	binary.Write(&buf, binary.BigEndian, p.InnerFrame)
+	ni, err = w.Write(p.InnerFrame)
+	n += int64(ni)
 
-	return bytes.TrimRight(buf.Bytes(), "\x00")
+	return
 }

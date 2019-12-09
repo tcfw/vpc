@@ -49,7 +49,7 @@ type Server struct {
 
 //VPCs provides a list of VPCs for an account
 func (s *Server) VPCs(ctx context.Context, req *vpcAPI.VPCsRequest) (*vpcAPI.VPCsResponse, error) {
-	//TODO(tcfw) valudate access to VPC info if not machine
+	//TODO(tcfw) validate access to VPC info if not machine
 	q, err := s.db.QueryContext(ctx, `SELECT * FROM vpcs LIMIT 500`)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (s *Server) VPCInfo(ctx context.Context, req *vpcAPI.VPCInfoRequest) (*vpcA
 
 //Subnets TODO
 func (s *Server) Subnets(ctx context.Context, req *vpcAPI.VPCInfoRequest) (*vpcAPI.SubnetsResponse, error) {
-	//TODO(tcfw) valudate access to VPC info if not machine
+	//TODO(tcfw) validate access to VPC info if not machine
 
 	subnets, err := s.getVPCSubnets(ctx, req.VpcId)
 	if err != nil {
@@ -135,7 +135,7 @@ func (s *Server) Subnets(ctx context.Context, req *vpcAPI.VPCInfoRequest) (*vpcA
 
 //InternetGWs TODO
 func (s *Server) InternetGWs(ctx context.Context, req *vpcAPI.VPCInfoRequest) (*vpcAPI.InternetGWsRespones, error) {
-	//TODO(tcfw) valudate access to VPC info if not machine
+	//TODO(tcfw) validate access to VPC info if not machine
 
 	// igw, err := s.getVPCIGW(ctx, req.VpcId)
 	// if err != nil {
