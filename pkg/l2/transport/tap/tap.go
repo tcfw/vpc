@@ -2,7 +2,8 @@ package tap
 
 import (
 	"fmt"
-	"log"
+
+	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -21,8 +22,8 @@ const (
 
 //Tap provides communication between taps in bridges and other endpoints
 type Tap struct {
-	out     chan ethernet.Frame //from bridge
-	in      chan *Packet        //from tap
+	out     chan ethernet.Frame   //from bridge
+	in      chan *protocol.Packet //from tap
 	vnid    uint32
 	tuntap  *water.Interface
 	handler *pcap.Handle
@@ -66,7 +67,7 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 	tapHandler := &Tap{
 		vnid:    vnid,
 		out:     make(chan ethernet.Frame, queueLen),
-		in:      make(chan *Packet, queueLen),
+		in:      make(chan *protocol.Packet, queueLen),
 		lis:     s,
 		iface:   tapIface,
 		mtu:     int(s.mtu),
@@ -107,7 +108,7 @@ func (v *Tap) Handle() {
 			return
 		}
 
-		v.lis.tx <- NewPacket(v.vnid, 0, buf[:n])
+		v.lis.tx <- protocol.NewPacket(v.vnid, buf[:n])
 	}
 }
 
@@ -121,21 +122,7 @@ func (v *Tap) HandlePCAP() {
 		if !ok {
 			return
 		}
-		v.lis.tx <- NewPacket(v.vnid, 0, frame.Data())
-	}
-}
-
-//pipeInPCAP takes packets from the endpoint handler and writes them to the tap interface using PCAP
-func (v *Tap) pipeInPCAP() {
-	for {
-		packet, ok := <-v.in
-		if !ok {
-			return
-		}
-
-		if err := v.handler.WritePacketData(packet.InnerFrame); err != nil {
-			log.Printf("failed to write packet")
-		}
+		v.lis.tx <- protocol.NewPacket(v.vnid, frame.Data())
 	}
 }
 
@@ -147,6 +134,6 @@ func (v *Tap) pipeIn() {
 			return
 		}
 
-		v.tuntap.Write(packet.InnerFrame)
+		v.tuntap.Write(packet.Frame)
 	}
 }

@@ -20,6 +20,7 @@ require (
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/lib/pq v1.2.0
 	github.com/lorenzosaino/go-sysctl v0.1.0
+	github.com/lucas-clemente/quic-go v0.14.1
 	github.com/mdlayher/ethernet v0.0.0-20190606142754-0394541c37b7 // indirect
 	github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065 // indirect
 	github.com/osrg/gobgp v2.0.0+incompatible

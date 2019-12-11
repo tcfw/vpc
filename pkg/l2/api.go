@@ -69,7 +69,7 @@ type Server struct {
 
 //NewServer creates a new server instance
 func NewServer() (*Server, error) {
-	transport, err := transportTap.NewListener(4789)
+	transport, err := transportTap.NewListener()
 	if err != nil {
 		return nil, err
 	}

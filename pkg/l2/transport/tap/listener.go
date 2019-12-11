@@ -7,6 +7,11 @@ import (
 	"net"
 	"sync"
 
+	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
+	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
+
+	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
+
 	"github.com/tcfw/vpc/pkg/l2/transport"
 
 	"github.com/vishvananda/netlink"
@@ -14,25 +19,24 @@ import (
 
 //Listener holds all vtep VNIs
 type Listener struct {
-	mu         sync.Mutex
-	vteps      map[uint32]*Tap
-	packetConn net.PacketConn
-	mtu        int32
-	tx         chan *Packet
-	FDB        *FDB
-	port       int
-	vlans      map[uint16]int
+	mu    sync.Mutex
+	taps  map[uint32]*Tap
+	conn  protocol.Handler
+	mtu   int32
+	tx    chan *protocol.Packet
+	FDB   *FDB
+	vlans map[uint16]int
 }
 
 //NewListener inits a new VTEP style listener
-func NewListener(port int) (*Listener, error) {
+func NewListener() (*Listener, error) {
 	lis := &Listener{
-		port:  port,
-		vteps: map[uint32]*Tap{},
+		taps:  map[uint32]*Tap{},
 		mtu:   1500,
-		tx:    make(chan *Packet, 1000),
+		tx:    make(chan *protocol.Packet, 1000),
 		FDB:   NewFDB(),
 		vlans: map[uint16]int{},
+		conn:  vxlan.NewHandler(),
 	}
 
 	return lis, nil
@@ -40,7 +44,7 @@ func NewListener(port int) (*Listener, error) {
 
 //SetMTU sets the MTU of the listening device
 func (s *Listener) SetMTU(mtu int32) error {
-	if s.packetConn != nil {
+	if s.conn != nil {
 		return fmt.Errorf("cannot set mtu after already started")
 	}
 
@@ -58,7 +62,7 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 		return err
 	}
 
-	s.vteps[vnid] = tapHandler
+	s.taps[vnid] = tapHandler
 
 	log.Println("registered new VTEP")
 
@@ -70,56 +74,44 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 
 //DelEP stops & deletes VTEP activity
 func (s *Listener) DelEP(vnid uint32) error {
-	s.vteps[vnid].Stop()
+	s.taps[vnid].Stop()
 
-	netlink.LinkDel(s.vteps[vnid].iface)
+	netlink.LinkDel(s.taps[vnid].iface)
 
-	delete(s.vteps, vnid)
+	delete(s.taps, vnid)
 
 	return nil
 }
 
 //Start begins listening for UDP handling
 func (s *Listener) Start() error {
-	pc, err := net.ListenPacket("udp", fmt.Sprintf(":%d", s.port))
-	if err != nil {
+	if err := s.conn.Start(); err != nil {
 		return err
 	}
 
-	s.packetConn = pc
-
 	go s.handleOut()
 
-	buf := make([]byte, s.mtu)
 	for {
-		n, addr, err := s.packetConn.ReadFrom(buf)
+		packet, err := s.conn.Recv()
 		if err != nil {
 			return err
 		}
-		s.handleIn(addr, buf[:n])
+		s.handleIn(packet)
 	}
 }
 
-func (s *Listener) handleIn(addr net.Addr, raw []byte) {
-	p, err := FromBytes(bytes.NewBuffer(raw))
-	if err != nil {
-		log.Printf("invalid packet: %s\n", err)
-	}
-
+func (s *Listener) handleIn(p *protocol.Packet) {
 	//Ignore unknown VNIDs
-	vtep, ok := s.vteps[p.VNID]
+	tap, ok := s.taps[p.VNID]
 	if !ok {
 		return
 	}
 
-	vtep.in <- p
+	tap.in <- p
 }
 
 func (s *Listener) handleOut() {
-	var buf bytes.Buffer
-
 	for {
-		buf.Reset()
 		packet, ok := <-s.tx
 		if !ok {
 			return
@@ -127,42 +119,36 @@ func (s *Listener) handleOut() {
 
 		//TODO(tcfw) handle ARP Proxy and ICMPv6
 
-		dst := packet.InnerFrame.Destination()
+		dst := packet.Frame.Destination()
 		broadcast := net.HardwareAddr{255, 255, 255, 255, 255, 255}
-
-		n, err := packet.WriteTo(&buf)
-		if err != nil {
-			log.Fatalf("Failed to write packet: %s", err)
-		}
 
 		if bytes.Compare(dst, broadcast) != 0 {
 			addr := s.FDB.LookupMac(packet.VNID, dst)
 
 			if addr == nil {
-				s.vteps[packet.VNID].FDBMiss <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
+				s.taps[packet.VNID].FDBMiss <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
 				continue
 			}
 
-			s.sendPacket(buf.Bytes()[:n], addr)
+			if err := s.conn.Send(packet, &net.IPAddr{IP: addr}); err != nil {
+				log.Printf("Error sending: %s\n", err)
+				return
+			}
 		} else {
 			//Flood to all EPs
 			for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
-				s.sendPacket(buf.Bytes()[:n], addr)
+				if err := s.conn.Send(packet, &net.IPAddr{IP: addr}); err != nil {
+					log.Printf("Error sending: %s\n", err)
+					return
+				}
 			}
 		}
 	}
 }
 
-//sendPacket forwards a data to a given endpoint
-func (s *Listener) sendPacket(data []byte, ip net.IP) error {
-	dst := &net.UDPAddr{IP: ip, Port: 4789, Zone: ""}
-	_, err := s.packetConn.WriteTo(data, dst)
-	return err
-}
-
 //ForwardingMiss gets a readonly sub for FDB misses
 func (s *Listener) ForwardingMiss(vnid uint32) (<-chan transport.ForwardingMiss, error) {
-	vtep, ok := s.vteps[vnid]
+	vtep, ok := s.taps[vnid]
 	if !ok {
 		return nil, fmt.Errorf("unknown vnid %d", vnid)
 	}
