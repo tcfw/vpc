@@ -2,6 +2,7 @@ package l3
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"runtime"
@@ -24,7 +25,8 @@ func createNetNS(name string) (netns.NsHandle, error) {
 	}
 
 	if err := setNSName(name); err != nil {
-		fmt.Printf("Failed to add a name to NS: %s\n", err)
+		log.Printf("Failed to add a name to NS: %s\n", err)
+		return routerNetNs, err
 	}
 
 	netns.Set(origns)

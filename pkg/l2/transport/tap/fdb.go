@@ -29,7 +29,7 @@ func NewFDB() *FDB {
 	bc, _ := net.ParseMAC("00:00:00:00:00:00")
 
 	tbl := &FDB{
-		entries:      []*FDBEntry{},
+		entries:      make([]*FDBEntry, 0, 100),
 		broadcastMac: bc,
 	}
 	go tbl.gc()
@@ -117,6 +117,8 @@ func (tbl *FDB) gc() {
 
 		expired := []int{}
 
+		tbl.mu.Lock()
+
 		for k, entry := range tbl.entries {
 			//Delete entries older than 1 minute
 			if entry.updated.Unix() < time.Now().Add(-3*time.Minute).Unix() {
@@ -124,8 +126,6 @@ func (tbl *FDB) gc() {
 				expired = append(expired, k)
 			}
 		}
-
-		tbl.mu.Lock()
 
 		for _, k := range expired {
 			tbl.delEntry(k)

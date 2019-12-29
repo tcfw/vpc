@@ -131,6 +131,10 @@ func (s *Server) SDN() {
 		log.Fatalf("Failed to start BGP: %s", err)
 	}
 
+	if err := s.transport.SetSDN(s.sdn); err != nil {
+		log.Printf("failed to set transport SDN ref: %s", err)
+	}
+
 }
 
 //AddStack creates a new VPC stack
@@ -375,7 +379,9 @@ func (s *Server) DeleteNIC(ctx context.Context, req *l2API.Nic) (*l2API.Empty, e
 	link, _ := GetNIC(stack, req.Id)
 
 	for _, ip := range req.Ip {
-		s.sdn.DeregisterMacIP(uint32(req.VpcId), req.Vlan, link.Attrs().HardwareAddr, net.ParseIP(ip))
+		if err := s.sdn.DeregisterMacIP(uint32(req.VpcId), req.Vlan, link.Attrs().HardwareAddr, net.ParseIP(ip)); err != nil {
+			log.Printf("Failed to deregister NIC: %s", err)
+		}
 	}
 
 	s.m.Lock()

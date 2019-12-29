@@ -3,6 +3,7 @@ package transport
 import (
 	"net"
 
+	"github.com/tcfw/vpc/pkg/l2/controller"
 	"github.com/vishvananda/netlink"
 )
 
@@ -13,6 +14,9 @@ type Transport interface {
 
 	//SetMTU sets the default MTU of added interfaces
 	SetMTU(mtu int32) error
+
+	//SetSDN allows the transport to use SDN functions like IP/MAC lookups
+	SetSDN(sdn controller.Controller) error
 
 	//AddEP adds a new VNID endpoint device to a given bridge
 	AddEP(vnid uint32, br *netlink.Bridge) error

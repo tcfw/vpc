@@ -79,7 +79,7 @@ func (rbgp *RouterBGP) Start(ns netns.NsHandle) error {
 			ListenAddresses: []string{rbgp.pubIP.String()},
 			As:              rbgp.ASN(),
 			RouterId:        rbgp.pubIP.String(),
-			ListenPort:      -1, // gobgp won't listen on tcp:179
+			ListenPort:      -1, // gobgp won't listen
 		},
 	})
 	if err != nil {
@@ -96,29 +96,30 @@ func (rbgp *RouterBGP) Start(ns netns.NsHandle) error {
 
 	for _, peer := range rbgp.peers {
 		n := &api.Peer{
-			// ApplyPolicy: &api.ApplyPolicy{
-			// 	InPolicy: &api.PolicyAssignment{
-			// 		// default import only vni
-			// 		Policies: []*api.Policy{
-			// 			&api.Policy{
-			// 				// allow only with matching community
-			// 				Statements: []*api.Statement{
-			// 					&api.Statement{
-			// 						Conditions: &api.Conditions{
-			// 							AsPathSet: &api.MatchSet{MatchType: api.MatchType_ANY, Name: "ASN"},
-			// 						},
-			// 						Actions: &api.Actions{RouteAction: api.RouteAction_ACCEPT},
-			// 					},
-			// 				},
-			// 			},
-			// 		},
-			// 		DefaultAction: api.RouteAction_REJECT,
-			// 	},
-			// 	ExportPolicy: &api.PolicyAssignment{
-			// 		//default export all accept
-			// 		DefaultAction: api.RouteAction_ACCEPT,
-			// 	},
-			// },
+			//TODO(tcfw) apply correct BGP filtering policies
+			/*ApplyPolicy: &api.ApplyPolicy{
+				InPolicy: &api.PolicyAssignment{
+					// default import only vni
+					Policies: []*api.Policy{
+						&api.Policy{
+							// allow only with matching community
+							Statements: []*api.Statement{
+								&api.Statement{
+									Conditions: &api.Conditions{
+										AsPathSet: &api.MatchSet{MatchType: api.MatchType_ANY, Name: "ASN"},
+									},
+									Actions: &api.Actions{RouteAction: api.RouteAction_ACCEPT},
+								},
+							},
+						},
+					},
+					DefaultAction: api.RouteAction_REJECT,
+				},
+				ExportPolicy: &api.PolicyAssignment{
+					//default export all accept
+					DefaultAction: api.RouteAction_ACCEPT,
+				},
+			},*/
 			Conf: &api.PeerConf{
 				NeighborAddress: peer,
 				PeerAs:          65000,

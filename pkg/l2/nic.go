@@ -28,7 +28,7 @@ func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error)
 		Macvlan: netlink.Macvlan{
 			LinkAttrs: netlink.LinkAttrs{
 				Name:        fmt.Sprintf(nicPattern, id),
-				MTU:         2000,
+				MTU:         1500,
 				ParentIndex: stack.Bridge.Index,
 			},
 			Mode: netlink.MACVLAN_MODE_BRIDGE,

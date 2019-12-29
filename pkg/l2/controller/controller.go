@@ -9,12 +9,12 @@ type Controller interface {
 	Start() error
 	Stop()
 
-	RegisterMacIP(uint32, uint32, net.HardwareAddr, net.IP) error
-	DeregisterMacIP(uint32, uint32, net.HardwareAddr, net.IP) error
-	LookupIP(uint32, uint16, net.IP) (net.HardwareAddr, net.IP, error)
-	LookupMac(uint32, net.HardwareAddr) (net.IP, error)
+	RegisterMacIP(vnid uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error
+	DeregisterMacIP(vnid uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error
+	LookupIP(vnid uint32, vlan uint16, ip net.IP) (net.HardwareAddr, net.IP, error)
+	LookupMac(vnid uint32, mac net.HardwareAddr) (net.IP, error)
 
-	BroadcastEndpoints(uint32) ([]net.IP, error)
-	RegisterEP(uint32) error
-	DeregisterEP(uint32) error
+	BroadcastEndpoints(vnid uint32) ([]net.IP, error)
+	RegisterEP(vnid uint32) error
+	DeregisterEP(vnid uint32) error
 }

@@ -253,9 +253,12 @@ func (rbgp *EVPNController) RegisterMacIP(vni uint32, vlan uint32, mac net.Hardw
 func (rbgp *EVPNController) DeregisterMacIP(vni uint32, vlan uint32, mac net.HardwareAddr, ip net.IP) error {
 	log.Printf("DEREG MAC: %+v %+v %+v %+v\n", vni, vlan, mac, ip)
 
-	rd, _ := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
+	rd, err := ptypes.MarshalAny(&api.RouteDistinguisherIPAddress{Admin: rbgp.rID.String(), Assigned: vni})
+	if err != nil {
+		return err
+	}
 
-	nlri, _ := ptypes.MarshalAny(&api.EVPNMACIPAdvertisementRoute{
+	nlri, err := ptypes.MarshalAny(&api.EVPNMACIPAdvertisementRoute{
 		Rd:          rd,
 		EthernetTag: vlan,
 		Esi:         &api.EthernetSegmentIdentifier{Type: 0, Value: []byte("single-homed")},
@@ -263,6 +266,9 @@ func (rbgp *EVPNController) DeregisterMacIP(vni uint32, vlan uint32, mac net.Har
 		MacAddress:  mac.String(),
 		IpAddress:   ip.String(),
 	})
+	if err != nil {
+		return err
+	}
 
 	return rbgp.delL2VPNEVPNNLRIPath(nlri)
 }
@@ -271,7 +277,9 @@ func (rbgp *EVPNController) DeregisterMacIP(vni uint32, vlan uint32, mac net.Har
 func (rbgp *EVPNController) LookupIP(vni uint32, vlan uint16, ip net.IP) (net.HardwareAddr, net.IP, error) {
 	log.Printf("LOOKUP IP: %+v %d, %+v\n", vni, vlan, ip)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	timeout := 4 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	var hwaddr net.HardwareAddr
@@ -279,47 +287,47 @@ func (rbgp *EVPNController) LookupIP(vni uint32, vlan uint16, ip net.IP) (net.Ha
 
 	found := make(chan struct{})
 
-	if err := rbgp.s.ListPath(ctx, &api.ListPathRequest{
-		TableType: api.TableType_GLOBAL,
-		Family: &api.Family{
-			Afi:  api.Family_AFI_L2VPN,
-			Safi: api.Family_SAFI_EVPN,
-		},
-	}, func(dst *api.Destination) {
-		for _, path := range dst.Paths {
-			if path.GetSourceId() != rbgp.rID.String() && path.SourceId != "<nil>" {
-				switch true {
-				case ptypes.Is(path.Nlri, &api.EVPNMACIPAdvertisementRoute{}):
-					macIP := &api.EVPNMACIPAdvertisementRoute{}
-					ptypes.UnmarshalAny(path.Nlri, macIP)
+	go func() {
+		rbgp.s.ListPath(ctx, &api.ListPathRequest{
+			TableType: api.TableType_GLOBAL,
+			Family: &api.Family{
+				Afi:  api.Family_AFI_L2VPN,
+				Safi: api.Family_SAFI_EVPN,
+			},
+		}, func(dst *api.Destination) {
+			for _, path := range dst.Paths {
+				if path.GetSourceId() != rbgp.rID.String() && path.SourceId != "<nil>" {
+					switch true {
+					case ptypes.Is(path.Nlri, &api.EVPNMACIPAdvertisementRoute{}):
+						macIP := &api.EVPNMACIPAdvertisementRoute{}
+						ptypes.UnmarshalAny(path.Nlri, macIP)
 
-					if macIP.Labels[0] != vni || macIP.EthernetTag != uint32(vlan) {
-						continue
-					}
+						if macIP.Labels[0] != vni { //|| macIP.EthernetTag != uint32(vpcID)
+							continue
+						}
 
-					rd := &api.RouteDistinguisherIPAddress{}
-					ptypes.UnmarshalAny(macIP.Rd, rd)
+						rd := &api.RouteDistinguisherIPAddress{}
+						ptypes.UnmarshalAny(macIP.Rd, rd)
 
-					rdIP := net.ParseIP(rd.Admin)
+						rdIP := net.ParseIP(rd.Admin)
 
-					if macIP.IpAddress == ip.String() {
-						hwaddr, _ = net.ParseMAC(macIP.MacAddress)
-						gw = rdIP
+						if macIP.IpAddress == ip.String() {
+							gw = rdIP
+							hwaddr, _ = net.ParseMAC(macIP.MacAddress)
 
-						found <- struct{}{}
-						return
+							found <- struct{}{}
+							return
+						}
 					}
 				}
 			}
-		}
-	}); err != nil {
-		return nil, nil, err
-	}
+		})
+	}()
 
 	select {
 	case <-found:
 		break
-	case <-ctx.Done():
+	case <-time.After(timeout):
 		return nil, nil, fmt.Errorf("timed out")
 	}
 

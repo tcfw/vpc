@@ -31,10 +31,8 @@ func (s *Server) Gc() {
 				}
 
 				s.transport.DelEP(uint32(vpcID))
-
-				delete(s.stacks, vpcID)
-
 				s.sdn.DeregisterEP(uint32(vpcID))
+				delete(s.stacks, vpcID)
 
 				s.logChange(&l2API.StackChange{
 					VpcId:  vpcID,

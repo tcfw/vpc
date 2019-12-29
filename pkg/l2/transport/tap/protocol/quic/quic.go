@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"time"
+	"unsafe"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
 
@@ -75,59 +76,69 @@ func (p *Handler) Stop() error {
 }
 
 //Send sends a frame to an endpoint
-func (p *Handler) Send(packet *protocol.Packet, addr net.Addr) error {
-	epID := addr.String()
-	conn, ok := p.epConns[epID]
+func (p *Handler) Send(packet *protocol.Packet, addr net.IP) (int, error) {
+	addrID := addr.String()
+	conn, ok := p.epConns[addrID]
 	if !ok {
-		if err := p.openConn(addr); err != nil {
-			return err
+		if err := p.openConn(addrID); err != nil {
+			return 0, err
 		}
-		conn = p.epConns[epID]
+		conn = p.epConns[addrID]
 	}
 
 	stream, ok := conn.streams[packet.VNID]
-
 	if !ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		helloStream, err := conn.session.OpenUniStreamSync(ctx)
+		nStream, err := p.openStream(conn, packet.VNID)
 		if err != nil {
-			return err
+			return 0, err
 		}
-
-		hello := make([]byte, 4)
-		binary.BigEndian.PutUint32(hello, packet.VNID)
-		helloStream.Write(hello)
-
-		helloStream.Close()
-
-		nStream, err := conn.session.OpenStreamSync(ctx)
-		if err != nil {
-			return err
-		}
-
-		conn.streams[packet.VNID] = nStream
 		stream = nStream
 	}
-	_, err := stream.Write(packet.Frame)
+
+	n, err := stream.Write(packet.Frame)
 	if err != nil {
 		//Reopen session
 		if err.Error() == "NO_ERROR: No recent network activity" {
 			stream.Close()
 			conn.session.Close()
-			delete(p.epConns, epID)
+			delete(p.epConns, addrID)
 			return p.Send(packet, addr)
 		}
 	}
 
-	return err
+	return n, err
+}
+
+func (p *Handler) openStream(conn *epConn, vnid uint32) (quic.Stream, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	helloStream, err := conn.session.OpenUniStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	helloStream.Write(uint32Bytes(&vnid))
+
+	helloStream.Close()
+
+	nStream, err := conn.session.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.streams[vnid] = nStream
+	return nStream, nil
+}
+
+func uint32Bytes(data *uint32) []byte {
+	return (*[4]byte)(unsafe.Pointer(data))[:]
 }
 
 //openConn opens a new connection to a remote endpoint
-func (p *Handler) openConn(addr net.Addr) error {
-	addrS := addr.String()
+func (p *Handler) openConn(addr string) error {
+	addrS := addr
 
-	rdst := (&net.UDPAddr{IP: net.ParseIP(addr.String()), Port: port}).String()
+	rdst := (&net.UDPAddr{IP: net.ParseIP(addr), Port: port}).String()
 
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
@@ -202,7 +213,7 @@ func (p *Handler) acceptSessions() {
 
 		p.epConns[epID] = &epConn{
 			session: sess,
-			streams: map[uint32]quic.Stream{},
+			streams: make(map[uint32]quic.Stream),
 		}
 
 		go p.handleSession(sess)
@@ -247,11 +258,11 @@ func (p *Handler) getHello(sess quic.Session) (*helloFrame, error) {
 			return
 		}
 
-		vnid := binary.BigEndian.Uint32(buf[:n])
-
-		frame <- &helloFrame{
-			vnid: vnid,
+		helloFrame := &helloFrame{
+			vnid: binary.LittleEndian.Uint32(buf[:n]),
 		}
+
+		frame <- helloFrame
 	}()
 
 	select {

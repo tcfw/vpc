@@ -136,7 +136,7 @@ func (rd *RouterDHCP) dhcpOptions() []dhcpv4.Modifier {
 
 //macToIP converts the originating mac address to the correct IP
 func (rd *RouterDHCP) macToIP(hwaddr net.HardwareAddr) (net.IP, error) {
-	//TODO(tcfw) link to hyper service
+	//TODO(tcfw) link to hyper/vpc service
 	IP, err := cidr.Host(rd.subnet, 4)
 	if err != nil {
 		return nil, err

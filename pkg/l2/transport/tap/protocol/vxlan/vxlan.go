@@ -45,11 +45,11 @@ func (p *Handler) Stop() error {
 }
 
 //Send sends a single packet to a VxLAN endpoinp
-func (p *Handler) Send(packet *protocol.Packet, rdst net.Addr) error {
+func (p *Handler) Send(packet *protocol.Packet, rdst net.IP) (int, error) {
 	vxlanFrame := NewPacket(packet.VNID, 0, packet.Frame)
-	addr := &net.UDPAddr{IP: net.ParseIP(rdst.String()), Port: p.port}
-	_, err := p.conn.WriteTo(vxlanFrame.Bytes(), addr)
-	return err
+	addr := &net.UDPAddr{IP: rdst, Port: p.port}
+	n, err := p.conn.WriteTo(vxlanFrame.Bytes(), addr)
+	return n, err
 }
 
 func (p *Handler) handleIn() {

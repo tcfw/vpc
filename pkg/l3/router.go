@@ -148,19 +148,10 @@ func (r *Router) init() error {
 			r.Delete()
 			return err
 		}
-		// if err := r.Exec(func() error {
-		// 	return r.bgp.AdvertSubnet(cidr, uint16(vlan))
-		// }); err != nil {
-		// 	r.Delete()
-		// 	log.Fatalf("BGP: %s", err)
-		// }
 	}
 
-	return r.Exec(func() error {
-		id := fmt.Sprintf("r-%s", r.ID)
-		fmt.Printf("Router (%s) is up!\n", id)
-		return nil
-	})
+	log.Printf("Router (r-%s) is up!\n", r.ID)
+	return nil
 }
 
 //AddSubnet attaches a new interface listening to a cidr and optionally enables DHCP
@@ -181,7 +172,7 @@ func (r *Router) AddSubnet(ip net.IP, cidr *net.IPNet, vlan uint16, dhcp bool) e
 				return dhcp.DHCPV4OnSubnet()
 			})
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 			}
 		}()
 	}
@@ -204,7 +195,7 @@ func (r *Router) EnableNATOn(iface string) error {
 	return r.Exec(func() error {
 		ipt, _ := iptables.New()
 		if err := ipt.Append("nat", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"); err != nil {
-			fmt.Printf("%s\n\n", err)
+			log.Printf("%s\n\n", err)
 		}
 		return nil
 	})
@@ -232,13 +223,30 @@ func (r *Router) AddSubnetIFace(addr net.IP, ipnet *net.IPNet, innerVlan uint16)
 
 	var hwaddr net.HardwareAddr
 
+	addrs := []netlink.Addr{}
+
 	err = r.Exec(func() error {
 		eth, _ := netlink.LinkByName(ethID)
 		hwaddr = eth.Attrs().HardwareAddr
+
+		netlink.LinkSetUp(eth)
+
+		existingAddrs, err := netlink.AddrList(eth, netlink.FAMILY_V6)
+		if err != nil {
+			log.Println("failed to fetch existing addrs: ", err)
+		} else {
+			addrs = existingAddrs
+		}
+
 		addrNet := &net.IPNet{IP: addr, Mask: ipnet.Mask}
-		netlink.AddrAdd(eth, &netlink.Addr{IPNet: addrNet})
-		return netlink.LinkSetUp(eth)
+		return netlink.AddrAdd(eth, &netlink.Addr{IPNet: addrNet})
 	})
+	addrs = append(addrs, netlink.Addr{IPNet: &net.IPNet{IP: addr, Mask: ipnet.Mask}})
+
+	addrsStrings := []string{}
+	for _, ethAddr := range addrs {
+		addrsStrings = append(addrsStrings, ethAddr.IP.String())
+	}
 
 	log.Printf("MAC: %s", hwaddr)
 
@@ -248,7 +256,7 @@ func (r *Router) AddSubnetIFace(addr net.IP, ipnet *net.IPNet, innerVlan uint16)
 		SubnetVlanId:  uint32(innerVlan),
 		ManuallyAdded: true,
 		ManualHwaddr:  hwaddr.String(),
-		Ip:            []string{addr.String()},
+		Ip:            addrsStrings,
 	}); err != nil {
 		log.Println(err)
 	}
@@ -279,7 +287,7 @@ func (r *Router) Ifup(iface string) error {
 func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string, hwaddr string) (netlink.Link, error) {
 	la := netlink.NewLinkAttrs()
 	la.Name = name
-	la.MTU = 1000
+	la.MTU = 1300
 
 	veth := &netlink.Veth{
 		LinkAttrs: la,
@@ -299,7 +307,7 @@ func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string
 	if hwaddr != "any" {
 		hwaddr, _ := net.ParseMAC(hwaddr)
 		if err := netlink.LinkSetHardwareAddr(routerEth, hwaddr); err != nil {
-			fmt.Println("Failed to set mac", err)
+			log.Println("Failed to set mac", err)
 		}
 	}
 
@@ -321,12 +329,24 @@ func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string
 //Delete deletes all attached veth pairs and unbinds+deletes the netns
 func (r *Router) Delete() error {
 	for _, subnet := range r.subnets {
+		existingAddrs := []netlink.Addr{}
+		r.Exec(func() error {
+			eth, _ := netlink.LinkByName(subnet.vethPeer)
+			addrs, _ := netlink.AddrList(eth, netlink.FAMILY_ALL)
+			existingAddrs = addrs
+			return nil
+		})
+		addrString := []string{}
+		for _, ethAddr := range existingAddrs {
+			addrString = append(addrString, ethAddr.IP.String())
+		}
+
 		if _, err := r.l2.DeleteNIC(context.Background(), &l2api.Nic{
 			Id:    subnet.id[2:], //exclude "n-..." for l2 id refs
 			Index: int32(subnet.iface.Attrs().Index),
 			VpcId: r.VPCID,
 			Vlan:  uint32(subnet.vlan),
-			Ip:    []string{subnet.ip.String()},
+			Ip:    addrString,
 		}); err != nil {
 			log.Println(err)
 		}
@@ -337,7 +357,7 @@ func (r *Router) Delete() error {
 	}
 
 	if err := unbindNSName(fmt.Sprintf("r-%s", r.ID)); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 
 	err := r.NetNS.Close()
@@ -352,7 +372,7 @@ func (r *Router) Exec(fn func() error) error {
 
 //NewID generates a unique id which can be assigned to routers
 func NewID() string {
-	length := 5
+	length := 6
 
 	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	var seededRand *rand.Rand = rand.New(

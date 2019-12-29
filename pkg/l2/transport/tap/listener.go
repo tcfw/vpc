@@ -7,8 +7,12 @@ import (
 	"net"
 	"sync"
 
-	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
-	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
+	"github.com/google/gopacket/layers"
+	"github.com/songgao/packets/ethernet"
+	"github.com/tcfw/vpc/pkg/l2/controller"
+
+	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
+	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
 
@@ -25,6 +29,7 @@ type Listener struct {
 	mtu   int32
 	tx    chan *protocol.Packet
 	FDB   *FDB
+	sdn   controller.Controller
 	vlans map[uint16]int
 }
 
@@ -36,7 +41,7 @@ func NewListener() (*Listener, error) {
 		tx:    make(chan *protocol.Packet, 1000),
 		FDB:   NewFDB(),
 		vlans: map[uint16]int{},
-		conn:  vxlan.NewHandler(),
+		conn:  quic.NewHandler(),
 	}
 
 	return lis, nil
@@ -49,6 +54,12 @@ func (s *Listener) SetMTU(mtu int32) error {
 	}
 
 	s.mtu = mtu
+	return nil
+}
+
+//SetSDN adds the SDN controller for ip lookups
+func (s *Listener) SetSDN(sdn controller.Controller) error {
+	s.sdn = sdn
 	return nil
 }
 
@@ -66,8 +77,8 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 
 	log.Println("registered new VTEP")
 
-	// go tapHandler.Handle()
-	go tapHandler.HandlePCAP()
+	go tapHandler.Handle()
+	// go tapHandler.HandlePCAP()
 
 	return nil
 }
@@ -117,10 +128,40 @@ func (s *Listener) handleOut() {
 			return
 		}
 
-		//TODO(tcfw) handle ARP Proxy and ICMPv6
+		var frame ethernet.Frame = packet.Frame
 
-		dst := packet.Frame.Destination()
-		broadcast := net.HardwareAddr{255, 255, 255, 255, 255, 255}
+		//Ignore all non-tagged frames
+		if frame.Tagging() == ethernet.NotTagged {
+			continue
+		}
+
+		etherType := frame.Ethertype()
+		dst := frame.Destination()
+
+		//ARP reducer
+		if etherType == ethernet.ARP {
+			go func() {
+				if err := s.arpReduce(packet); err != nil {
+					log.Printf("failed arp reduce: %s", err)
+				}
+			}()
+			continue
+		}
+
+		//ICMPv6 NDP reducer - 0x3a = ICMPv6
+		if etherType == ethernet.IPv6 && packet.Frame[24] == 0x3a {
+			icmp6Type := frame.Payload()[40]
+			if icmp6Type == layers.ICMPv6TypeNeighborSolicitation {
+				go func() {
+					if err := s.icmp6NDPReduce(packet); err != nil {
+						log.Printf("failed ICMPv6 NDP reduce: %s", err)
+					}
+				}()
+				continue
+			}
+		}
+
+		broadcast := net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
 		if bytes.Compare(dst, broadcast) != 0 {
 			addr := s.FDB.LookupMac(packet.VNID, dst)
@@ -130,14 +171,14 @@ func (s *Listener) handleOut() {
 				continue
 			}
 
-			if err := s.conn.Send(packet, &net.IPAddr{IP: addr}); err != nil {
+			if _, err := s.conn.Send(packet, addr); err != nil {
 				log.Printf("Error sending: %s\n", err)
 				return
 			}
 		} else {
 			//Flood to all EPs
 			for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
-				if err := s.conn.Send(packet, &net.IPAddr{IP: addr}); err != nil {
+				if _, err := s.conn.Send(packet, addr); err != nil {
 					log.Printf("Error sending: %s\n", err)
 					return
 				}
