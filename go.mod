@@ -6,7 +6,6 @@ require (
 	github.com/apparentlymart/go-cidr v1.0.1
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/coreos/go-iptables v0.4.5
-	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/dgryski/go-farm v0.0.0-20191112170834-c2139c5d712b // indirect
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793
 	github.com/eapache/channels v1.1.0 // indirect
@@ -23,17 +22,17 @@ require (
 	github.com/lib/pq v1.3.0
 	github.com/lorenzosaino/go-sysctl v0.1.0
 	github.com/lucas-clemente/quic-go v0.14.1
+	github.com/marten-seemann/qtls v0.5.0 // indirect
 	github.com/mdlayher/ethernet v0.0.0-20190606142754-0394541c37b7 // indirect
 	github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065 // indirect
 	github.com/onsi/ginkgo v1.11.0 // indirect
 	github.com/onsi/gomega v1.8.1 // indirect
 	github.com/osrg/gobgp v2.0.0+incompatible
 	github.com/pelletier/go-toml v1.6.0 // indirect
-	github.com/prometheus/common v0.7.0
 	github.com/satori/go.uuid v1.2.0 // indirect
+	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/smartystreets/assertions v1.0.1 // indirect
 	github.com/songgao/packets v0.0.0-20160404182456-549a10cd4091
-	github.com/songgao/water v0.0.0-20190725173103-fd331bda3f4b
 	github.com/spf13/afero v1.2.2 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/cobra v0.0.5

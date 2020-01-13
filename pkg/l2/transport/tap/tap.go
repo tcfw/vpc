@@ -2,6 +2,7 @@ package tap
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 
@@ -15,7 +16,6 @@ import (
 
 	"github.com/google/gopacket/pcap"
 	"github.com/songgao/packets/ethernet"
-	"github.com/songgao/water"
 )
 
 const (
@@ -25,10 +25,11 @@ const (
 
 //Tap provides communication between taps in bridges and other endpoints
 type Tap struct {
-	out     chan ethernet.Frame   //from bridge (rx)
-	in      chan *protocol.Packet //from protocol endpoint (tx)
-	vnid    uint32
-	tuntaps []*water.Interface
+	out  chan *ethernet.Frame  //from bridge (rx)
+	in   chan *protocol.Packet //from protocol endpoint (tx)
+	vnid uint32
+	// tuntaps []*water.Interface
+	tuntaps []*tuntapDev
 	handler *pcap.Handle
 	iface   netlink.Link
 	mtu     int
@@ -46,7 +47,7 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 			MasterIndex: br.Index,
 			TxQLen:      1000,
 		},
-		Flags: netlink.TUNTAP_MULTI_QUEUE_DEFAULTS | netlink.TUNTAP_TUN_EXCL,
+		Flags: netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
 	}
 
 	if err := netlink.LinkAdd(tapIface); err != nil {
@@ -57,36 +58,22 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 		return nil, err
 	}
 
-	handler, err := pcap.OpenLive(tapIface.Name, 65535, false, pcap.BlockForever)
-	if err != nil {
-		return nil, err
-	}
-
-	handler.SetDirection(pcap.DirectionOut)
-
 	tapHandler := &Tap{
 		vnid:    vnid,
-		out:     make(chan ethernet.Frame, queueLen),
+		out:     make(chan *ethernet.Frame, queueLen),
 		in:      make(chan *protocol.Packet, queueLen),
 		lis:     s,
 		iface:   tapIface,
 		mtu:     int(s.mtu),
 		FDBMiss: make(chan transport.ForwardingMiss, 10),
-		handler: handler,
-		tuntaps: []*water.Interface{},
+		tuntaps: []*tuntapDev{},
 	}
 
 	//Create 2 listening queues through multiqueue tap option
 	for range [2]int{} {
-		config := water.Config{
-			DeviceType: water.TAP,
-		}
-		config.Name = tapIface.Name
-		config.MultiQueue = true
-
-		ifce, err := water.New(config)
+		ifce, err := tapHandler.openDev(tapIface.Name)
 		if err != nil {
-			return nil, fmt.Errorf("failed to init tun dev: %s", err)
+			log.Fatal(err)
 		}
 		tapHandler.tuntaps = append(tapHandler.tuntaps, ifce)
 	}
@@ -115,21 +102,23 @@ func (v *Tap) Handle() {
 }
 
 //handleTapPipe listens for packets on a tap and forwards them to the endpoint handler
-func (v *Tap) handleTapPipe(wg *sync.WaitGroup, tap *water.Interface) {
+func (v *Tap) handleTapPipe(wg *sync.WaitGroup, tap *tuntapDev) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	wg.Add(1)
 	defer wg.Done()
 
-	buf := make([]byte, v.mtu)
+	buf := make([]byte, v.mtu+1024)
 	for {
 		n, err := tap.Read(buf)
 		if err != nil {
 			return
 		}
 
-		v.lis.tx <- protocol.NewPacket(v.vnid, buf[:n])
+		frame := buf[:n]
+
+		v.lis.tx <- protocol.NewPacket(v.vnid, frame)
 	}
 }
 
@@ -156,6 +145,11 @@ func (v *Tap) pipeIn() {
 			return
 		}
 
-		v.tuntaps[0].Write(packet.Frame)
+		v.Write(packet.Frame)
 	}
+}
+
+//Write sends a packet to the bridge
+func (v *Tap) Write(b []byte) (int, error) {
+	return v.tuntaps[0].WriteRaw(b)
 }

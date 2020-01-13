@@ -44,7 +44,11 @@ func Serve(port uint) {
 
 	go srv.Gc()
 	go srv.SDN()
-	go srv.transport.Start()
+	go func() {
+		if err := srv.transport.Start(); err != nil {
+			log.Printf("failed to start transport: %s\n", err)
+		}
+	}()
 
 	l2API.RegisterL2ServiceServer(grpcServer, srv)
 	log.Println("Starting gRPC server")

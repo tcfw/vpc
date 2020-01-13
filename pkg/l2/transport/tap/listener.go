@@ -11,8 +11,8 @@ import (
 	"github.com/songgao/packets/ethernet"
 	"github.com/tcfw/vpc/pkg/l2/controller"
 
-	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
-	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
+	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
+	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
 
@@ -41,7 +41,7 @@ func NewListener() (*Listener, error) {
 		tx:    make(chan *protocol.Packet, 1000),
 		FDB:   NewFDB(),
 		vlans: map[uint16]int{},
-		conn:  quic.NewHandler(),
+		conn:  vxlan.NewHandler(),
 	}
 
 	return lis, nil
@@ -118,7 +118,7 @@ func (s *Listener) handleIn(p *protocol.Packet) {
 		return
 	}
 
-	tap.in <- p
+	tap.Write(p.Frame)
 }
 
 func (s *Listener) handleOut() {
