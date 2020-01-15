@@ -48,7 +48,7 @@ func (s *Listener) icmp6NDPReduce(packet *protocol.Packet) error {
 		return fmt.Errorf("failed to build arp response: %s", err)
 	}
 
-	log.Printf("Sending ICMPv6 respone %x", resp)
+	log.Printf("Sending ICMPv6 response %x", resp)
 
 	s.taps[packet.VNID].in <- &protocol.Packet{VNID: packet.VNID, Frame: resp}
 
