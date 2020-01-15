@@ -17,10 +17,10 @@ type tuntapDev struct {
 }
 
 const (
-	cIFF_TUN         = 0x0001
-	cIFF_TAP         = 0x0002
-	cIFF_NO_PI       = 0x1000
-	cIFF_MULTI_QUEUE = 0x0100
+	cIFFTUN        = 0x0001
+	cIFFTAP        = 0x0002
+	cIFFNOPI       = 0x1000
+	cIFFMULTIQUEUE = 0x0100
 )
 
 type ifReq struct {
@@ -66,7 +66,7 @@ func (v *Tap) openDev(deviceName string) (ifce *tuntapDev, err error) {
 	}
 
 	var req ifReq
-	req.Flags = cIFF_NO_PI | cIFF_TAP | cIFF_MULTI_QUEUE
+	req.Flags = cIFFNOPI | cIFFTAP | cIFFMULTIQUEUE
 	copy(req.Name[:], deviceName)
 
 	if err = ioctl(uintptr(fd), unix.TUNSETIFF, uintptr(unsafe.Pointer(&req))); err != nil {
