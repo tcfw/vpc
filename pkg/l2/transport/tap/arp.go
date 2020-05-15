@@ -11,6 +11,11 @@ import (
 
 //arpReduce proxies any ARP request to the SDN and provides injects a reply if available
 func (s *Listener) arpReduce(packet *protocol.Packet) error {
+	defer func() {
+		//@TODO fix the panics caused by misreading the ARP requests
+		recover()
+	}()
+
 	if s.sdn == nil {
 		return fmt.Errorf("no SDN attached")
 	}
@@ -32,7 +37,7 @@ func (s *Listener) arpReduce(packet *protocol.Packet) error {
 		return fmt.Errorf("failed to build arp response: %s", err)
 	}
 
-	s.taps[packet.VNID].in <- &protocol.Packet{VNID: packet.VNID, Frame: resp}
+	s.taps[packet.VNID].Write(resp)
 
 	return nil
 }

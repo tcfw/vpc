@@ -50,7 +50,7 @@ func (s *Listener) icmp6NDPReduce(packet *protocol.Packet) error {
 
 	log.Printf("Sending ICMPv6 response %x", resp)
 
-	s.taps[packet.VNID].in <- &protocol.Packet{VNID: packet.VNID, Frame: resp}
+	s.taps[packet.VNID].Write(resp)
 
 	return nil
 }

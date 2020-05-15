@@ -27,7 +27,6 @@ type Listener struct {
 	taps  map[uint32]*Tap
 	conn  protocol.Handler
 	mtu   int32
-	tx    chan *protocol.Packet
 	FDB   *FDB
 	sdn   controller.Controller
 	vlans map[uint16]int
@@ -38,13 +37,18 @@ func NewListener() (*Listener, error) {
 	lis := &Listener{
 		taps:  map[uint32]*Tap{},
 		mtu:   1500,
-		tx:    make(chan *protocol.Packet, 1000),
 		FDB:   NewFDB(),
 		vlans: map[uint16]int{},
 		conn:  vxlan.NewHandler(),
 	}
 
 	return lis, nil
+}
+
+//Start attaches the conn handler
+func (s *Listener) Start() error {
+	s.conn.SetHandler(s.handleIn)
+	return s.conn.Start()
 }
 
 //SetMTU sets the MTU of the listening device
@@ -94,97 +98,81 @@ func (s *Listener) DelEP(vnid uint32) error {
 	return nil
 }
 
-//Start begins listening for UDP handling
-func (s *Listener) Start() error {
-	if err := s.conn.Start(); err != nil {
-		return err
-	}
-
-	go s.handleOut()
-
-	for {
-		packet, err := s.conn.Recv()
-		if err != nil {
-			return err
-		}
-		s.handleIn(packet)
-	}
-}
-
-func (s *Listener) handleIn(p *protocol.Packet) {
-	//Ignore unknown VNIDs
-	tap, ok := s.taps[p.VNID]
-	if !ok {
-		return
-	}
-
-	tap.Write(p.Frame)
-}
-
-func (s *Listener) handleOut() {
-	for {
-		packet, ok := <-s.tx
+func (s *Listener) handleIn(ps []*protocol.Packet) {
+	for _, p := range ps {
+		//Ignore unknown VNIDs
+		tap, ok := s.taps[p.VNID]
 		if !ok {
 			return
 		}
 
-		var frame ethernet.Frame = packet.Frame
+		tap.Write(p.Frame)
+	}
+}
 
-		//Ignore all non-tagged frames
-		if frame.Tagging() == ethernet.NotTagged {
-			continue
-		}
+//Send forwards or handles interally a set of packets
+func (s *Listener) Send(ps []*protocol.Packet) {
+	for _, p := range ps {
+		s.sendOne(p)
+	}
+}
 
-		etherType := frame.Ethertype()
-		dst := frame.Destination()
+func (s *Listener) sendOne(packet *protocol.Packet) error {
+	var frame ethernet.Frame = packet.Frame
 
-		//ARP reducer
-		if etherType == ethernet.ARP {
+	//Ignore all non-tagged frames
+	if frame.Tagging() == ethernet.NotTagged {
+		return fmt.Errorf("mismatch tags")
+	}
+
+	etherType := frame.Ethertype()
+	dst := frame.Destination()
+
+	//ARP reducer
+	if etherType == ethernet.ARP {
+		go func() {
+			if err := s.arpReduce(packet); err != nil {
+				log.Printf("failed arp reduce: %s", err)
+			}
+		}()
+		return nil
+	}
+
+	//ICMPv6 NDP reducer - 0x3a = ICMPv6
+	if etherType == ethernet.IPv6 && packet.Frame[24] == 0x3a {
+		icmp6Type := frame.Payload()[40]
+		if icmp6Type == layers.ICMPv6TypeNeighborSolicitation {
 			go func() {
-				if err := s.arpReduce(packet); err != nil {
-					log.Printf("failed arp reduce: %s", err)
+				if err := s.icmp6NDPReduce(packet); err != nil {
+					log.Printf("failed ICMPv6 NDP reduce: %s", err)
 				}
 			}()
-			continue
+			return nil
+		}
+	}
+
+	broadcast := net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+
+	if bytes.Compare(dst, broadcast) != 0 {
+		addr := s.FDB.LookupMac(packet.VNID, dst)
+
+		if addr == nil {
+			s.taps[packet.VNID].FDBMiss <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
+			return nil
 		}
 
-		//ICMPv6 NDP reducer - 0x3a = ICMPv6
-		if etherType == ethernet.IPv6 && packet.Frame[24] == 0x3a {
-			icmp6Type := frame.Payload()[40]
-			if icmp6Type == layers.ICMPv6TypeNeighborSolicitation {
-				go func() {
-					if err := s.icmp6NDPReduce(packet); err != nil {
-						log.Printf("failed ICMPv6 NDP reduce: %s", err)
-					}
-				}()
-				continue
-			}
+		if _, err := s.conn.Send([]*protocol.Packet{packet}, addr); err != nil {
+			return err
 		}
-
-		broadcast := net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-
-		if bytes.Compare(dst, broadcast) != 0 {
-			addr := s.FDB.LookupMac(packet.VNID, dst)
-
-			if addr == nil {
-				s.taps[packet.VNID].FDBMiss <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
-				continue
-			}
-
-			if _, err := s.conn.Send(packet, addr); err != nil {
-				log.Printf("Error sending: %s\n", err)
-				return
-			}
-		} else {
-			//Flood to all EPs
-			for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
-				if _, err := s.conn.Send(packet, addr); err != nil {
-					log.Printf("Error sending: %s\n", err)
-					return
-				}
+	} else {
+		//Flood to all EPs
+		for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
+			if _, err := s.conn.Send([]*protocol.Packet{packet}, addr); err != nil {
+				return err
 			}
 		}
 	}
+	return nil
 }
 
 //ForwardingMiss gets a readonly sub for FDB misses

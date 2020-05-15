@@ -30,8 +30,8 @@ const (
 type Handler struct {
 	quicSrv quic.Listener
 	epConns map[string]*epConn
-	in      chan *protocol.Packet
 	port    int
+	recv    protocol.HandlerFunc
 }
 
 type epConn struct {
@@ -43,9 +43,14 @@ type epConn struct {
 func NewHandler() *Handler {
 	return &Handler{
 		epConns: map[string]*epConn{},
-		in:      make(chan *protocol.Packet, 1000),
 		port:    port,
+		recv:    func(_ []*protocol.Packet) {},
 	}
+}
+
+//SetHandler sets the callback for receiving packets
+func (p *Handler) SetHandler(handle protocol.HandlerFunc) {
+	p.recv = handle
 }
 
 //Start opens the QUIC listener and starts waiting for sessions
@@ -69,14 +74,11 @@ func (p *Handler) Start() error {
 
 //Stop closes all sessions and the quic server
 func (p *Handler) Stop() error {
-	for _, ep := range p.epConns {
-		ep.session.Close()
-	}
 	return p.quicSrv.Close()
 }
 
 //Send sends a frame to an endpoint
-func (p *Handler) Send(packet *protocol.Packet, addr net.IP) (int, error) {
+func (p *Handler) Send(packets []*protocol.Packet, addr net.IP) (int, error) {
 	addrID := addr.String()
 	conn, ok := p.epConns[addrID]
 	if !ok {
@@ -86,31 +88,37 @@ func (p *Handler) Send(packet *protocol.Packet, addr net.IP) (int, error) {
 		conn = p.epConns[addrID]
 	}
 
-	stream, ok := conn.streams[packet.VNID]
-	if !ok {
-		nStream, err := p.openStream(conn, packet.VNID)
-		if err != nil {
-			return 0, err
+	var n int
+
+	for _, packet := range packets {
+		stream, ok := conn.streams[packet.VNID]
+		if !ok {
+			nStream, err := p.openStream(conn, packet.VNID)
+			if err != nil {
+				return 0, err
+			}
+			stream = nStream
 		}
-		stream = nStream
+
+		for _, packet := range packets {
+			ni, err := stream.Write(packet.Frame)
+			if err != nil {
+				//Reopen session
+				if err.Error() == "NO_ERROR: No recent network activity" {
+					stream.Close()
+					delete(p.epConns, addrID)
+					return p.Send(packets, addr)
+				}
+			}
+			n += ni
+		}
 	}
 
-	n, err := stream.Write(packet.Frame)
-	if err != nil {
-		//Reopen session
-		if err.Error() == "NO_ERROR: No recent network activity" {
-			stream.Close()
-			conn.session.Close()
-			delete(p.epConns, addrID)
-			return p.Send(packet, addr)
-		}
-	}
-
-	return n, err
+	return n, nil
 }
 
 func (p *Handler) openStream(conn *epConn, vnid uint32) (quic.Stream, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	helloStream, err := conn.session.OpenUniStreamSync(ctx)
 	if err != nil {
@@ -145,7 +153,7 @@ func (p *Handler) openConn(addr string) error {
 		NextProtos:         []string{nProto},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	conn, err := quic.DialAddrContext(ctx, rdst, tlsConfig, nil)
@@ -159,16 +167,6 @@ func (p *Handler) openConn(addr string) error {
 	}
 
 	return nil
-}
-
-//Recv waits for a new frame from a remote endpoint
-func (p *Handler) Recv() (*protocol.Packet, error) {
-	packet, ok := <-p.in
-	if !ok {
-		return nil, fmt.Errorf("receiving channel is closed")
-	}
-
-	return packet, nil
 }
 
 //tlsConfig generates a temporary TLS config
@@ -224,7 +222,6 @@ func (p *Handler) acceptSessions() {
 func (p *Handler) handleSession(sess quic.Session) {
 	helloFrame, err := p.getHello(sess)
 	if err != nil {
-		sess.Close()
 		return
 	}
 
@@ -279,7 +276,7 @@ func (p *Handler) getHello(sess quic.Session) (*helloFrame, error) {
 
 //handleStream reads in frames from remote eps
 func (p *Handler) handleStream(hello *helloFrame, stream quic.Stream) {
-	buf := make([]byte, 1500)
+	buf := make([]byte, 81920)
 
 	for {
 		n, err := stream.Read(buf)
@@ -287,6 +284,6 @@ func (p *Handler) handleStream(hello *helloFrame, stream quic.Stream) {
 			return
 		}
 
-		p.in <- &protocol.Packet{VNID: hello.vnid, Frame: buf[:n]}
+		p.recv([]*protocol.Packet{&protocol.Packet{VNID: hello.vnid, Frame: buf[:n]}})
 	}
 }

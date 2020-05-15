@@ -1,6 +1,7 @@
 package vxlan
 
 import (
+	"math"
 	"math/big"
 	"net"
 
@@ -9,7 +10,9 @@ import (
 
 func hash(packet *protocol.Packet, rdst net.IP, mod int) int {
 	i := big.NewInt(0)
-	i.SetBytes(packet.Frame[:57]) //Shorten down to the average length of a IPv6 header
+	n := uint(math.Min(57, float64(len(packet.Frame))))
+
+	i.SetBytes(packet.Frame[:n]) //Shorten down to the average length of a IPv6 header
 	i.Mod(i, big.NewInt(int64(mod)))
 	return int(i.Uint64())
 }

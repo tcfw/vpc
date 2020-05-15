@@ -26,7 +26,7 @@ func createNetNS(name string) (netns.NsHandle, error) {
 
 	if err := setNSName(name); err != nil {
 		log.Printf("Failed to add a name to NS: %s\n", err)
-		return routerNetNs, err
+		return routerNetNs, fmt.Errorf("failed to add name to ns: %s", err)
 	}
 
 	netns.Set(origns)
@@ -39,7 +39,7 @@ func setNSName(name string) error {
 	p := path.Join("/var/run/netns/", name)
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL, 0444)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create netns name: %s", err)
 	}
 	f.Close()
 	nspath := fmt.Sprintf("/proc/%d/task/%d/ns/net", os.Getpid(), syscall.Gettid())

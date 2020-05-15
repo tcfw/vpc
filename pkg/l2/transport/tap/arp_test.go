@@ -25,7 +25,6 @@ func TestValidARPRequest(t *testing.T) {
 	var vnid uint32 = 5
 
 	listener.taps[vnid] = &Tap{
-		in: make(chan *protocol.Packet, 1),
 		iface: &netlink.Tuntap{LinkAttrs: netlink.LinkAttrs{
 			HardwareAddr: net.HardwareAddr{0x86, 0x22, 0x00, 0x00, 0x00, 0xff},
 		}},
@@ -82,7 +81,6 @@ func TestARPResponse(t *testing.T) {
 	var vnid uint32 = 5
 
 	listener.taps[vnid] = &Tap{
-		in: make(chan *protocol.Packet, 1),
 		iface: &netlink.Tuntap{LinkAttrs: netlink.LinkAttrs{
 			HardwareAddr: net.HardwareAddr{0x86, 0x22, 0x00, 0x00, 0x00, 0xff},
 		}},

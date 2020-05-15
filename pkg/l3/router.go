@@ -59,7 +59,7 @@ func CreateRouter(l2 l2api.L2ServiceClient, stack *l2.Stack, id string) (*Router
 
 	ns, err := createNetNS(fmt.Sprintf("r-%s", id))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create ns: %s", err)
 	}
 
 	router.NetNS = ns

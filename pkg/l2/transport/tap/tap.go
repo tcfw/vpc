@@ -15,18 +15,14 @@ import (
 	"github.com/vishvananda/netlink"
 
 	"github.com/google/gopacket/pcap"
-	"github.com/songgao/packets/ethernet"
 )
 
 const (
-	queueLen    = 1000
 	vtepPattern = "t-%d"
 )
 
 //Tap provides communication between taps in bridges and other endpoints
 type Tap struct {
-	out  chan *ethernet.Frame  //from bridge (rx)
-	in   chan *protocol.Packet //from protocol endpoint (tx)
 	vnid uint32
 	// tuntaps []*water.Interface
 	tuntaps []*tuntapDev
@@ -60,8 +56,6 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 
 	tapHandler := &Tap{
 		vnid:    vnid,
-		out:     make(chan *ethernet.Frame, queueLen),
-		in:      make(chan *protocol.Packet, queueLen),
 		lis:     s,
 		iface:   tapIface,
 		mtu:     int(s.mtu),
@@ -84,13 +78,10 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 //Stop closes off comms
 func (v *Tap) Stop() {
 	close(v.FDBMiss)
-	close(v.in)
 }
 
 //Handle starts listeners for each tap fd created
 func (v *Tap) Handle() {
-	go v.pipeIn()
-
 	var wg sync.WaitGroup
 
 	for _, tap := range v.tuntaps {
@@ -98,7 +89,6 @@ func (v *Tap) Handle() {
 	}
 
 	wg.Wait()
-	close(v.out)
 }
 
 //handleTapPipe listens for packets on a tap and forwards them to the endpoint handler
@@ -118,34 +108,20 @@ func (v *Tap) handleTapPipe(wg *sync.WaitGroup, tap *tuntapDev) {
 
 		frame := buf[:n]
 
-		v.lis.tx <- protocol.NewPacket(v.vnid, frame)
+		//TODO(tcfw) add to drop metrics on error
+		v.lis.sendOne(protocol.NewPacket(v.vnid, frame))
 	}
 }
 
 //HandlePCAP uses PCAP to listen for packets and forward them to the endpoint handler
 func (v *Tap) HandlePCAP() {
-	go v.pipeIn()
-	defer close(v.out)
-
 	src := gopacket.NewPacketSource(v.handler, layers.LayerTypeEthernet)
 	for {
 		frame, ok := <-src.Packets()
 		if !ok {
 			return
 		}
-		v.lis.tx <- protocol.NewPacket(v.vnid, frame.Data())
-	}
-}
-
-//pipeIn takes packets from the endpoint handler and writes them to the tap interface
-func (v *Tap) pipeIn() {
-	for {
-		packet, ok := <-v.in
-		if !ok {
-			return
-		}
-
-		v.Write(packet.Frame)
+		v.lis.sendOne(protocol.NewPacket(v.vnid, frame.Data()))
 	}
 }
 

@@ -15,10 +15,9 @@ import (
 
 //Handler VxLAN endpoint protocol
 type Handler struct {
-	conn  []net.PacketConn
-	in    chan []byte
-	inBuf []byte
-	port  int
+	conn []net.PacketConn
+	port int
+	recv protocol.HandlerFunc
 
 	connCount int
 }
@@ -26,10 +25,9 @@ type Handler struct {
 //NewHandler creates a new VxLAN handler
 func NewHandler() *Handler {
 	return &Handler{
-		connCount: runtime.NumCPU() * 2,
+		connCount: runtime.NumCPU(),
 		conn:      []net.PacketConn{},
-		inBuf:     make([]byte, 1500),
-		in:        make(chan []byte, 1000),
+		recv:      func(_ []*protocol.Packet) {},
 		port:      4789,
 	}
 }
@@ -63,7 +61,7 @@ func (p *Handler) Start() error {
 		p.conn = append(p.conn, pc)
 	}
 
-	go p.handleIn()
+	p.handleIn()
 
 	return nil
 }
@@ -79,41 +77,41 @@ func (p *Handler) Stop() error {
 }
 
 //Send sends a single packet to a VxLAN endpoinp
-func (p *Handler) Send(packet *protocol.Packet, rdst net.IP) (int, error) {
-	vxlanFrame := NewPacket(packet.VNID, 0, packet.Frame)
-	addr := &net.UDPAddr{IP: rdst, Port: p.port}
-	i := hash(packet, rdst, p.connCount)
-	n, err := p.conn[i].WriteTo(vxlanFrame.Bytes(), addr)
-	return n, err
+func (p *Handler) Send(packets []*protocol.Packet, rdst net.IP) (int, error) {
+	n := 0
+	for _, packet := range packets {
+		vxlanFrame := NewPacket(packet.VNID, 0, packet.Frame)
+		addr := &net.UDPAddr{IP: rdst, Port: p.port}
+		i := hash(packet, rdst, p.connCount)
+		ni, err := p.conn[i].WriteTo(vxlanFrame.Bytes(), addr)
+		if err != nil {
+			return n, err
+		}
+		n += ni
+	}
+	return n, nil
 }
 
+//SetHandler sets the receiving callback
+func (p *Handler) SetHandler(handle protocol.HandlerFunc) {
+	p.recv = handle
+}
+
+//handleIn handles picking up pakcets from the underlying udp connection per thread
 func (p *Handler) handleIn() {
 	for _, conn := range p.conn {
 		go func(c net.PacketConn) {
+			buff := make([]byte, 81920)
 			for {
-				n, _, err := c.ReadFrom(p.inBuf)
+				n, _, err := c.ReadFrom(buff)
 				if err != nil {
-					close(p.in)
 					return
 				}
 
-				p.in <- p.inBuf[:n]
+				packet, _ := FromBytes(bytes.NewBuffer(buff[:n]))
+
+				p.recv([]*protocol.Packet{protocol.NewPacket(packet.VNID, packet.InnerFrame)})
 			}
 		}(conn)
 	}
-}
-
-//Recv wait for a new packet
-func (p *Handler) Recv() (*protocol.Packet, error) {
-	raw, ok := <-p.in
-	if !ok {
-		return nil, fmt.Errorf("channel closed")
-	}
-
-	packet, err := FromBytes(bytes.NewBuffer(raw))
-	if err != nil {
-		return nil, err
-	}
-
-	return protocol.NewPacket(packet.VNID, packet.InnerFrame), nil
 }
