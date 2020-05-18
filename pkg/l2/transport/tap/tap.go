@@ -3,7 +3,6 @@ package tap
 import (
 	"fmt"
 	"log"
-	"runtime"
 	"sync"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
@@ -15,22 +14,25 @@ import (
 	"github.com/vishvananda/netlink"
 
 	"github.com/google/gopacket/pcap"
+
+	"hash/maphash"
 )
 
 const (
 	vtepPattern = "t-%d"
+	tapQueues   = 2
 )
 
 //Tap provides communication between taps in bridges and other endpoints
 type Tap struct {
 	vnid uint32
 	// tuntaps []*water.Interface
-	tuntaps []*tuntapDev
-	handler *pcap.Handle
-	iface   netlink.Link
-	mtu     int
-	lis     *Listener
-	FDBMiss chan transport.ForwardingMiss
+	tuntaps     []*tuntapDev
+	pCapHandler *pcap.Handle
+	iface       netlink.Link
+	mtu         int
+	lis         *Listener
+	FDBMiss     chan transport.ForwardingMiss
 }
 
 //NewTap creates a tap interface and starts listening to it
@@ -41,7 +43,7 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 			Name:        fmt.Sprintf(vtepPattern, vnid),
 			MTU:         mtu,
 			MasterIndex: br.Index,
-			TxQLen:      1000,
+			TxQLen:      10000,
 		},
 		Flags: netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
 	}
@@ -64,7 +66,7 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 	}
 
 	//Create 2 listening queues through multiqueue tap option
-	for range [2]int{} {
+	for i := 0; i < tapQueues; i++ {
 		ifce, err := tapHandler.openDev(tapIface.Name)
 		if err != nil {
 			log.Fatal(err)
@@ -93,9 +95,6 @@ func (v *Tap) Handle() {
 
 //handleTapPipe listens for packets on a tap and forwards them to the endpoint handler
 func (v *Tap) handleTapPipe(wg *sync.WaitGroup, tap *tuntapDev) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	wg.Add(1)
 	defer wg.Done()
 
@@ -115,17 +114,24 @@ func (v *Tap) handleTapPipe(wg *sync.WaitGroup, tap *tuntapDev) {
 
 //HandlePCAP uses PCAP to listen for packets and forward them to the endpoint handler
 func (v *Tap) HandlePCAP() {
-	src := gopacket.NewPacketSource(v.handler, layers.LayerTypeEthernet)
+	src := gopacket.NewPacketSource(v.pCapHandler, layers.LayerTypeEthernet)
 	for {
 		frame, ok := <-src.Packets()
 		if !ok {
 			return
 		}
+
 		v.lis.sendOne(protocol.NewPacket(v.vnid, frame.Data()))
 	}
 }
 
 //Write sends a packet to the bridge
 func (v *Tap) Write(b []byte) (int, error) {
-	return v.tuntaps[0].WriteRaw(b)
+	return v.tuntaps[v.woHash(b)].WriteRaw(b)
+}
+
+func (v *Tap) woHash(b []byte) int {
+	h := maphash.Hash{}
+	h.Write(b[:12]) //hash the src & dst l2
+	return int(h.Sum64() % uint64(tapQueues))
 }

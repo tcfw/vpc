@@ -48,6 +48,11 @@ func (p *Handler) Start() error {
 					if err != nil {
 						return
 					}
+
+					err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PRIORITY, 0)
+					if err != nil {
+						return
+					}
 				})
 				return err
 			},

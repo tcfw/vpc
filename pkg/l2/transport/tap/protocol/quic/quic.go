@@ -13,10 +13,12 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"syscall"
 	"time"
 	"unsafe"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
+	"golang.org/x/sys/unix"
 
 	quic "github.com/lucas-clemente/quic-go"
 )
@@ -60,7 +62,25 @@ func (p *Handler) Start() error {
 		return err
 	}
 
-	lis, err := quic.ListenAddr(fmt.Sprintf(":%d", p.port), tlsConfig, nil)
+	lisConfig := net.ListenConfig{
+		Control: func(network string, address string, c syscall.RawConn) error {
+			var err error
+			c.Control(func(fd uintptr) {
+				err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PRIORITY, 0)
+				if err != nil {
+					return
+				}
+			})
+			return err
+		},
+	}
+
+	conn, err := lisConfig.ListenPacket(context.Background(), "udp", fmt.Sprintf(":%d", p.port))
+	if err != nil {
+		return err
+	}
+
+	lis, err := quic.Listen(conn, tlsConfig, nil)
 	if err != nil {
 		return err
 	}

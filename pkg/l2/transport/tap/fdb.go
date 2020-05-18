@@ -18,7 +18,7 @@ type FDBEntry struct {
 
 //FDB forwarding DB
 type FDB struct {
-	entries []*FDBEntry
+	entries map[string][]*FDBEntry
 	mu      sync.RWMutex
 
 	broadcastMac net.HardwareAddr
@@ -29,7 +29,7 @@ func NewFDB() *FDB {
 	bc, _ := net.ParseMAC("00:00:00:00:00:00")
 
 	tbl := &FDB{
-		entries:      make([]*FDBEntry, 0, 100),
+		entries:      map[string][]*FDBEntry{},
 		broadcastMac: bc,
 	}
 	go tbl.gc()
@@ -38,21 +38,25 @@ func NewFDB() *FDB {
 }
 
 //LookupMac finds dst VTEP for a given MAC
-func (tbl *FDB) LookupMac(vnid uint32, dst net.HardwareAddr) net.IP {
+func (tbl *FDB) LookupMac(vnid uint32, mac net.HardwareAddr) net.IP {
 	var rdst net.IP
 
 	tbl.mu.RLock()
 	defer tbl.mu.RUnlock()
 
-	for k, val := range tbl.entries {
-		if bytes.Compare(val.mac, dst) == 0 && val.vnid == vnid && bytes.Compare(val.mac, tbl.broadcastMac) != 0 {
-			//Update cache TS
-			val.updated = time.Now()
-			tbl.entries[k] = val
+	hkey := hmackey(vnid, mac)
 
-			rdst = val.rdst
+	if entries, ok := tbl.entries[hkey]; ok {
+		for k, val := range entries {
+			if bytes.Compare(val.mac, mac) == 0 && val.vnid == vnid && bytes.Compare(val.mac, tbl.broadcastMac) != 0 {
+				//Update cache TS
+				val.updated = time.Now()
+				tbl.entries[hkey][k] = val
 
-			break
+				rdst = val.rdst
+
+				break
+			}
 		}
 	}
 
@@ -66,9 +70,11 @@ func (tbl *FDB) ListBroadcast(vnid uint32) []net.IP {
 
 	dsts := []net.IP{}
 
-	for _, val := range tbl.entries {
-		if bytes.Compare(val.mac, tbl.broadcastMac) == 0 && val.vnid == vnid {
-			dsts = append(dsts, val.rdst)
+	for _, entries := range tbl.entries {
+		for _, val := range entries {
+			if bytes.Compare(val.mac, tbl.broadcastMac) == 0 && val.vnid == vnid {
+				dsts = append(dsts, val.rdst)
+			}
 		}
 	}
 
@@ -81,7 +87,13 @@ func (tbl *FDB) AddEntry(vnid uint32, mac net.HardwareAddr, rdst net.IP) {
 
 	tbl.mu.RLock()
 
-	for k, entry := range tbl.entries {
+	hkey := hmackey(vnid, mac)
+
+	if _, ok := tbl.entries[hkey]; !ok {
+		tbl.entries[hkey] = make([]*FDBEntry, 0, 10)
+	}
+
+	for k, entry := range tbl.entries[hkey] {
 		if entry.vnid == vnid && bytes.Compare(entry.mac, mac) == 0 && entry.rdst.Equal(rdst) {
 			loc = k
 			break
@@ -91,7 +103,7 @@ func (tbl *FDB) AddEntry(vnid uint32, mac net.HardwareAddr, rdst net.IP) {
 	tbl.mu.RUnlock()
 
 	if loc == -1 {
-		log.Printf("added FDB rec: %s %s", mac, rdst)
+		// log.Printf("added FDB rec: %s %s", mac, rdst)
 	}
 
 	tbl.mu.Lock()
@@ -105,37 +117,43 @@ func (tbl *FDB) AddEntry(vnid uint32, mac net.HardwareAddr, rdst net.IP) {
 	}
 
 	if loc == -1 {
-		tbl.entries = append(tbl.entries, entry)
+		tbl.entries[hkey] = append(tbl.entries[hkey], entry)
 	} else {
-		tbl.entries[loc] = entry
+		tbl.entries[hkey][loc] = entry
 	}
 }
 
 func (tbl *FDB) gc() {
 	for {
 		time.Sleep(2 * time.Minute)
-
-		expired := []int{}
-
-		tbl.mu.Lock()
-
-		for k, entry := range tbl.entries {
-			//Delete entries older than 1 minute
-			if entry.updated.Unix() < time.Now().Add(-3*time.Minute).Unix() {
-				log.Printf("FDB GC: %s %s", entry.mac, entry.rdst)
-				expired = append(expired, k)
-			}
-		}
-
-		for _, k := range expired {
-			tbl.delEntry(k)
-		}
-
-		tbl.mu.Unlock()
+		tbl.gcOnce()
 	}
 }
 
-func (tbl *FDB) delEntry(i int) {
-	tbl.entries[len(tbl.entries)-1], tbl.entries[i] = tbl.entries[i], tbl.entries[len(tbl.entries)-1]
-	tbl.entries = tbl.entries[:len(tbl.entries)-1]
+func (tbl *FDB) gcOnce() {
+	tbl.mu.Lock()
+
+	for hkey, entries := range tbl.entries {
+		for k, entry := range entries {
+			//Delete entries older than 1 minute
+			if entry.updated.Unix() < time.Now().Add(-3*time.Minute).Unix() {
+				log.Printf("FDB GC: %s %s", entry.mac, entry.rdst)
+				tbl.delEntry(hkey, k)
+			}
+		}
+		if len(entries) == 0 {
+			delete(tbl.entries, hkey)
+		}
+	}
+
+	tbl.mu.Unlock()
+}
+
+func (tbl *FDB) delEntry(hkey string, i int) {
+	tbl.entries[hkey][len(tbl.entries[hkey])-1], tbl.entries[hkey][i] = tbl.entries[hkey][i], tbl.entries[hkey][len(tbl.entries[hkey])-1]
+	tbl.entries[hkey] = tbl.entries[hkey][:len(tbl.entries[hkey])-1]
+}
+
+func hmackey(vnid uint32, mac net.HardwareAddr) string {
+	return string(vnid) + "/" + string(mac)
 }
