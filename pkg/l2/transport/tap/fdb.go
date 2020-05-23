@@ -2,10 +2,13 @@ package tap
 
 import (
 	"bytes"
+	"hash/maphash"
 	"log"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/kpango/fastime"
 )
 
 //FDBEntry forwarding DB entry
@@ -18,7 +21,7 @@ type FDBEntry struct {
 
 //FDB forwarding DB
 type FDB struct {
-	entries map[string][]*FDBEntry
+	entries map[uint64]map[int]*FDBEntry
 	mu      sync.RWMutex
 
 	broadcastMac net.HardwareAddr
@@ -29,7 +32,7 @@ func NewFDB() *FDB {
 	bc, _ := net.ParseMAC("00:00:00:00:00:00")
 
 	tbl := &FDB{
-		entries:      map[string][]*FDBEntry{},
+		entries:      map[uint64]map[int]*FDBEntry{},
 		broadcastMac: bc,
 	}
 	go tbl.gc()
@@ -47,11 +50,11 @@ func (tbl *FDB) LookupMac(vnid uint32, mac net.HardwareAddr) net.IP {
 	hkey := hmackey(vnid, mac)
 
 	if entries, ok := tbl.entries[hkey]; ok {
-		for k, val := range entries {
+		for _, val := range entries {
 			if bytes.Compare(val.mac, mac) == 0 && val.vnid == vnid && bytes.Compare(val.mac, tbl.broadcastMac) != 0 {
 				//Update cache TS
-				val.updated = time.Now()
-				tbl.entries[hkey][k] = val
+				val.updated = fastime.Now()
+				// tbl.entries[hkey][k] = val
 
 				rdst = val.rdst
 
@@ -90,7 +93,7 @@ func (tbl *FDB) AddEntry(vnid uint32, mac net.HardwareAddr, rdst net.IP) {
 	hkey := hmackey(vnid, mac)
 
 	if _, ok := tbl.entries[hkey]; !ok {
-		tbl.entries[hkey] = make([]*FDBEntry, 0, 10)
+		tbl.entries[hkey] = map[int]*FDBEntry{}
 	}
 
 	for k, entry := range tbl.entries[hkey] {
@@ -113,11 +116,11 @@ func (tbl *FDB) AddEntry(vnid uint32, mac net.HardwareAddr, rdst net.IP) {
 		vnid:    vnid,
 		rdst:    rdst,
 		mac:     mac,
-		updated: time.Now(),
+		updated: fastime.Now(),
 	}
 
 	if loc == -1 {
-		tbl.entries[hkey] = append(tbl.entries[hkey], entry)
+		tbl.entries[hkey][len(tbl.entries[hkey])] = entry
 	} else {
 		tbl.entries[hkey][loc] = entry
 	}
@@ -136,7 +139,7 @@ func (tbl *FDB) gcOnce() {
 	for hkey, entries := range tbl.entries {
 		for k, entry := range entries {
 			//Delete entries older than 1 minute
-			if entry.updated.Unix() < time.Now().Add(-3*time.Minute).Unix() {
+			if entry.updated.Unix() < fastime.Now().Add(-3*time.Minute).Unix() {
 				log.Printf("FDB GC: %s %s", entry.mac, entry.rdst)
 				tbl.delEntry(hkey, k)
 			}
@@ -149,11 +152,28 @@ func (tbl *FDB) gcOnce() {
 	tbl.mu.Unlock()
 }
 
-func (tbl *FDB) delEntry(hkey string, i int) {
-	tbl.entries[hkey][len(tbl.entries[hkey])-1], tbl.entries[hkey][i] = tbl.entries[hkey][i], tbl.entries[hkey][len(tbl.entries[hkey])-1]
-	tbl.entries[hkey] = tbl.entries[hkey][:len(tbl.entries[hkey])-1]
+func (tbl *FDB) delEntry(hkey uint64, i int) {
+	delete(tbl.entries[hkey], i)
+	if len(tbl.entries[hkey]) == 0 {
+		delete(tbl.entries, hkey)
+	}
 }
 
-func hmackey(vnid uint32, mac net.HardwareAddr) string {
-	return string(vnid) + "/" + string(mac)
+var (
+	hbase maphash.Hash
+)
+
+func hmackey(v uint32, mac net.HardwareAddr) uint64 {
+	hbase.Reset()
+	hbase.WriteByte(byte(v))
+	hbase.WriteByte(byte(v >> 8))
+	hbase.WriteByte(byte(v >> 16))
+	hbase.WriteByte(byte(v >> 24))
+	hbase.WriteByte(mac[0])
+	hbase.WriteByte(mac[1])
+	hbase.WriteByte(mac[2])
+	hbase.WriteByte(mac[3])
+	hbase.WriteByte(mac[4])
+	hbase.WriteByte(mac[5])
+	return hbase.Sum64()
 }

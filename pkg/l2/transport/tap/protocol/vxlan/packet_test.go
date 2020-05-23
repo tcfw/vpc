@@ -56,7 +56,7 @@ func TestPacketToBytes(t *testing.T) {
 }
 
 func TestPacketNewPacketToBytes(t *testing.T) {
-	p := NewPacket(5, 0, []byte{
+	p := NewPacket(5, []byte{
 		0x1, 0x2, 0x3,
 	})
 	raw := p.Bytes()
@@ -75,12 +75,11 @@ func BenchmarkToByte(b *testing.B) {
 		0xff, 0x2, 0x3, 0x1, 0x2, 0x3, 0x1, 0x2, 0x3, 0x1, 0x2, 0x3, 0x1, 0x2, 0x3, 0xf4,
 	}
 	vni := uint32(5)
-	gp := uint32(0)
 
 	b.Run("convert", func(b *testing.B) {
 		c := int64(0)
 		for i := 0; i < b.N; i++ {
-			p := NewPacket(vni, gp, innerFrame)
+			p := NewPacket(vni, innerFrame)
 			bytes := p.Bytes()
 			c = c + int64(len(bytes))
 		}

@@ -15,7 +15,7 @@ func (s *Listener) AddVLAN(vnid uint32, vlan uint16) error {
 		s.vlans[vlan]++
 	}
 
-	return netlink.BridgeVlanAdd(s.taps[vnid].iface, vlan, false, false, false, false)
+	return netlink.BridgeVlanAdd(s.taps[vnid].IFace(), vlan, false, false, false, false)
 }
 
 //DelVLAN removes the VLAN to the vtep on the bridge
@@ -28,7 +28,7 @@ func (s *Listener) DelVLAN(vnid uint32, vlan uint16) error {
 	s.vlans[vlan]--
 
 	if s.vlans[vlan] <= 0 {
-		return netlink.BridgeVlanDel(s.taps[vnid].iface, vlan, false, false, false, false)
+		return netlink.BridgeVlanDel(s.taps[vnid].IFace(), vlan, false, false, false, false)
 	}
 
 	return nil

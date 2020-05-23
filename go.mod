@@ -18,6 +18,7 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20191212172455-b3fbc9f9fdd5
 	github.com/juliengk/go-netfilter v0.0.0-20190717112259-40a8b7fb5b5a
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
+	github.com/kpango/fastime v1.0.16
 	github.com/lib/pq v1.3.0
 	github.com/lorenzosaino/go-sysctl v0.1.0
 	github.com/lucas-clemente/quic-go v0.15.7
@@ -41,7 +42,7 @@ require (
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
 	github.com/vishvananda/netlink v1.0.1-0.20191113183427-d71301a47b60
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
-	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
+	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae
 	golang.org/x/text v0.3.2 // indirect

@@ -81,20 +81,24 @@ func (p *Handler) Stop() error {
 	return nil
 }
 
-//Send sends a single packet to a VxLAN endpoinp
+//Send sends a group of packets to a dest endpoint
 func (p *Handler) Send(packets []*protocol.Packet, rdst net.IP) (int, error) {
-	n := 0
 	for _, packet := range packets {
-		vxlanFrame := NewPacket(packet.VNID, 0, packet.Frame)
-		addr := &net.UDPAddr{IP: rdst, Port: p.port}
-		i := hash(packet, rdst, p.connCount)
-		ni, err := p.conn[i].WriteTo(vxlanFrame.Bytes(), addr)
+		_, err := p.SendOne(packet, rdst)
 		if err != nil {
-			return n, err
+			return 0, err
 		}
-		n += ni
 	}
-	return n, nil
+	return 0, nil
+}
+
+//SendOne sends a single packet to a dest endpoint
+func (p *Handler) SendOne(packet *protocol.Packet, rdst net.IP) (int, error) {
+	vxlanFrame := NewPacket(packet.VNID, packet.Frame)
+	addr := &net.UDPAddr{IP: rdst, Port: p.port}
+	i := hash(packet, rdst, p.connCount)
+	return p.conn[i].WriteTo(vxlanFrame.Bytes(), addr)
+
 }
 
 //SetHandler sets the receiving callback
@@ -113,7 +117,8 @@ func (p *Handler) handleIn() {
 					return
 				}
 
-				packet, _ := FromBytes(bytes.NewBuffer(buff[:n]))
+				br := bytes.NewBuffer(buff[:n])
+				packet, _ := FromBytes(br)
 
 				p.recv([]*protocol.Packet{protocol.NewPacket(packet.VNID, packet.InnerFrame)})
 			}

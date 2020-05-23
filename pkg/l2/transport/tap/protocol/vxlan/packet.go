@@ -16,13 +16,15 @@ type Packet struct {
 	VNID        uint32 //wire: uint24
 	resv        uint8
 	InnerFrame  ethernet.Frame
+
+	_buf bytes.Buffer
 }
 
 //NewPacket encaps a inner packet with VXlan headers
-func NewPacket(vnid uint32, groupPolicy uint32, innerFrame []byte) *Packet {
+func NewPacket(vnid uint32, innerFrame []byte) *Packet {
 	return &Packet{
 		Flags:       0x08,
-		GroupPolicy: groupPolicy,
+		GroupPolicy: 0,
 		VNID:        vnid,
 		resv:        0,
 		InnerFrame:  innerFrame,
@@ -68,30 +70,27 @@ func FromBytes(bytesReader io.Reader) (*Packet, error) {
 
 //Bytes converts the packet to raw bytes
 func (p *Packet) Bytes() []byte {
-	var buf bytes.Buffer
+	p._buf.Reset()
+	p.WriteTo(&p._buf)
 
-	n, _ := p.WriteTo(&buf)
-
-	return buf.Bytes()[:n]
+	return p._buf.Bytes()
 }
 
 //WriteTo writes a pakcet to a give writer
-func (p *Packet) WriteTo(w io.Writer) (int64, error) {
-	buf := make([]byte, 4)
-	var tbuf bytes.Buffer
+func (p *Packet) WriteTo(w *bytes.Buffer) (int64, error) {
+	w.WriteByte(p.Flags)
 
-	tbuf.WriteByte(p.Flags)
+	w.WriteByte(byte(p.GroupPolicy >> 16))
+	w.WriteByte(byte(p.GroupPolicy >> 8))
+	w.WriteByte(byte(p.GroupPolicy))
 
-	binary.BigEndian.PutUint32(buf, p.GroupPolicy)
-	tbuf.Write(buf[1:])
+	w.WriteByte(byte(p.VNID >> 16))
+	w.WriteByte(byte(p.VNID >> 8))
+	w.WriteByte(byte(p.VNID))
 
-	binary.BigEndian.PutUint32(buf, p.VNID)
-	tbuf.Write(buf[1:])
+	w.WriteByte(0) //resv
 
-	tbuf.WriteByte(0) //resv
+	n, _ := w.Write(p.InnerFrame)
 
-	tbuf.Write(p.InnerFrame)
-
-	n, err := w.Write(tbuf.Bytes())
-	return int64(n), err
+	return int64(n + 8), nil
 }

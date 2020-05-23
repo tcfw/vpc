@@ -1,18 +1,19 @@
 package vxlan
 
 import (
-	"math"
-	"math/big"
+	"hash/crc32"
 	"net"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
 )
 
 func hash(packet *protocol.Packet, rdst net.IP, mod int) int {
-	i := big.NewInt(0)
-	n := uint(math.Min(57, float64(len(packet.Frame))))
+	n := len(packet.Frame)
+	if n > 57 {
+		n = 57
+	}
 
-	i.SetBytes(packet.Frame[:n]) //Shorten down to the average length of a IPv6 header
-	i.Mod(i, big.NewInt(int64(mod)))
-	return int(i.Uint64())
+	i := crc32.ChecksumIEEE(packet.Frame[:n])
+
+	return int(i % uint32(mod))
 }

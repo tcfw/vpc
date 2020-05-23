@@ -12,6 +12,7 @@ import (
 	"github.com/tcfw/vpc/pkg/l2/controller"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
+	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vpctp"
 	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
@@ -23,23 +24,25 @@ import (
 
 //Listener holds all vtep VNIs
 type Listener struct {
-	mu    sync.Mutex
-	taps  map[uint32]*Tap
-	conn  protocol.Handler
-	mtu   int32
-	FDB   *FDB
-	sdn   controller.Controller
-	vlans map[uint16]int
+	mu     sync.Mutex
+	taps   map[uint32]Nic
+	misses map[uint32]chan transport.ForwardingMiss
+	conn   protocol.Handler
+	mtu    int32
+	FDB    *FDB
+	sdn    controller.Controller
+	vlans  map[uint16]int
 }
 
 //NewListener inits a new VTEP style listener
 func NewListener() (*Listener, error) {
 	lis := &Listener{
-		taps:  map[uint32]*Tap{},
-		mtu:   1500,
-		FDB:   NewFDB(),
-		vlans: map[uint16]int{},
-		conn:  vxlan.NewHandler(),
+		taps:   map[uint32]Nic{},
+		mtu:    1500,
+		FDB:    NewFDB(),
+		vlans:  map[uint16]int{},
+		misses: map[uint32]chan transport.ForwardingMiss{},
+		conn:   vxlan.NewHandler(),
 	}
 
 	return lis, nil
@@ -77,11 +80,14 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 		return err
 	}
 
+	tapHandler.SetHandler(s.Send)
+
 	s.taps[vnid] = tapHandler
+	s.misses[vnid] = make(chan transport.ForwardingMiss, 10)
 
 	log.Println("registered new VTEP")
 
-	go tapHandler.Handle()
+	go tapHandler.Start()
 	// go tapHandler.HandlePCAP()
 
 	return nil
@@ -89,11 +95,15 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 
 //DelEP stops & deletes VTEP activity
 func (s *Listener) DelEP(vnid uint32) error {
-	s.taps[vnid].Stop()
+	tap, ok := s.taps[vnid]
+	if !ok {
+		return fmt.Errorf("failed to find tap for vnid")
+	}
 
-	netlink.LinkDel(s.taps[vnid].iface)
-
+	tap.Stop()
+	tap.Delete()
 	delete(s.taps, vnid)
+	delete(s.misses, vnid)
 
 	return nil
 }
@@ -118,28 +128,24 @@ func (s *Listener) Send(ps []*protocol.Packet) {
 }
 
 func (s *Listener) sendOne(packet *protocol.Packet) error {
-	var frame ethernet.Frame = packet.Frame
+	frame := ethernet.Frame(packet.Frame)
 
 	//Ignore all non-tagged frames
-	if frame.Tagging() == ethernet.NotTagged {
-		return fmt.Errorf("mismatch tags")
+	if frame.Tagging() != ethernet.Tagged {
+		return fmt.Errorf("mismatch vlan tags")
 	}
 
 	etherType := frame.Ethertype()
 	dst := frame.Destination()
 
-	//ARP reducer
-	if etherType == ethernet.ARP {
+	if etherType == ethernet.ARP { //ARP reduce
 		go func() {
 			if err := s.arpReduce(packet); err != nil {
 				log.Printf("failed arp reduce: %s", err)
 			}
 		}()
 		return nil
-	}
-
-	//ICMPv6 NDP reducer - 0x3a = ICMPv6
-	if etherType == ethernet.IPv6 && packet.Frame[24] == 0x3a {
+	} else if etherType == ethernet.IPv6 && packet.Frame[24] == 0x3a { //ICMPv6 NDP reducer - 0x3a = ICMPv6
 		icmp6Type := frame.Payload()[40]
 		if icmp6Type == layers.ICMPv6TypeNeighborSolicitation {
 			go func() {
@@ -151,17 +157,17 @@ func (s *Listener) sendOne(packet *protocol.Packet) error {
 		}
 	}
 
-	broadcast := net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-
-	if bytes.Compare(dst, broadcast) != 0 {
+	if bytes.Compare(dst, net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}) != 0 {
 		addr := s.FDB.LookupMac(packet.VNID, dst)
 
 		if addr == nil {
-			s.taps[packet.VNID].FDBMiss <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
+			go func() {
+				s.misses[packet.VNID] <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
+			}()
 			return nil
 		}
 
-		if _, err := s.conn.Send([]*protocol.Packet{packet}, addr); err != nil {
+		if _, err := s.conn.SendOne(packet, addr); err != nil {
 			return err
 		}
 	} else {
@@ -172,17 +178,18 @@ func (s *Listener) sendOne(packet *protocol.Packet) error {
 			}
 		}
 	}
+
 	return nil
 }
 
 //ForwardingMiss gets a readonly sub for FDB misses
 func (s *Listener) ForwardingMiss(vnid uint32) (<-chan transport.ForwardingMiss, error) {
-	vtep, ok := s.taps[vnid]
+	missCh, ok := s.misses[vnid]
 	if !ok {
 		return nil, fmt.Errorf("unknown vnid %d", vnid)
 	}
 
-	return vtep.FDBMiss, nil
+	return missCh, nil
 }
 
 //AddForwardEntry adds an entry to the FDB
