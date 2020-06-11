@@ -5,6 +5,8 @@ go 1.13
 require (
 	github.com/apparentlymart/go-cidr v1.0.1
 	github.com/armon/go-radix v1.0.0 // indirect
+	github.com/asavie/xdp v0.0.0-20190821014653-501c515cc4e8
+	github.com/cilium/ebpf v0.0.0-20200528143342-2f72d9154e35
 	github.com/coreos/go-iptables v0.4.5
 	github.com/dgryski/go-farm v0.0.0-20191112170834-c2139c5d712b // indirect
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793
@@ -24,9 +26,10 @@ require (
 	github.com/lucas-clemente/quic-go v0.15.7
 	github.com/mdlayher/ethernet v0.0.0-20190606142754-0394541c37b7 // indirect
 	github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065 // indirect
+	github.com/newtools/ebpf v0.1.0
 	github.com/onsi/ginkgo v1.11.0 // indirect
 	github.com/onsi/gomega v1.8.1 // indirect
-	github.com/osrg/gobgp v2.0.0+incompatible
+	github.com/osrg/gobgp v0.0.0-20200602125502-33e3bb6b2756
 	github.com/pelletier/go-toml v1.6.0 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
@@ -42,9 +45,9 @@ require (
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
 	github.com/vishvananda/netlink v1.0.1-0.20191113183427-d71301a47b60
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
-	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
+	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae
+	golang.org/x/sys v0.0.0-20200323222414-85ca7c5b95cd
 	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
 	google.golang.org/genproto v0.0.0-20191223191004-3caeed10a8bf // indirect

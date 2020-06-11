@@ -14,6 +14,7 @@ import (
 	"github.com/lorenzosaino/go-sysctl"
 	l2api "github.com/tcfw/vpc/pkg/api/v1/l2"
 	"github.com/tcfw/vpc/pkg/l2"
+	"github.com/tcfw/vpc/pkg/l3/ns"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -22,7 +23,7 @@ import (
 type Router struct {
 	ID    string
 	VPCID int32
-	NetNS netns.NsHandle
+	NetNS *ns.NetNS
 	Veths map[string]netlink.Link
 	ExtBr *netlink.Bridge
 
@@ -57,7 +58,7 @@ func CreateRouter(l2 l2api.L2ServiceClient, stack *l2.Stack, id string) (*Router
 		subnets:  map[string]*Subnet{},
 	}
 
-	ns, err := createNetNS(fmt.Sprintf("r-%s", id))
+	ns, err := ns.CreateNetNS(fmt.Sprintf("r-%s", id))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ns: %s", err)
 	}
@@ -311,7 +312,7 @@ func (r *Router) CreateVeth(bridge *netlink.Bridge, name string, peerName string
 		}
 	}
 
-	if err := netlink.LinkSetNsFd(routerEth, int(r.NetNS)); err != nil {
+	if err := netlink.LinkSetNsFd(routerEth, r.NetNS.Fd()); err != nil {
 		return nil, err
 	}
 
@@ -356,18 +357,14 @@ func (r *Router) Delete() error {
 		netlink.LinkDel(veth)
 	}
 
-	if err := unbindNSName(fmt.Sprintf("r-%s", r.ID)); err != nil {
-		log.Println(err)
-	}
-
 	err := r.NetNS.Close()
-	r.NetNS = 0
+	r.NetNS = nil
 	return err
 }
 
 //Exec executes a given func inside the router network namespace
 func (r *Router) Exec(fn func() error) error {
-	return execInNetNs(r.NetNS, fn)
+	return r.NetNS.Exec(fn)
 }
 
 //NewID generates a unique id which can be assigned to routers
