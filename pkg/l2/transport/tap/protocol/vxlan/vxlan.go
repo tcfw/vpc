@@ -27,7 +27,7 @@ func NewHandler() *Handler {
 	return &Handler{
 		connCount: runtime.NumCPU(),
 		conn:      []net.PacketConn{},
-		recv:      func(_ []*protocol.Packet) {},
+		recv:      func(_ []protocol.Packet) {},
 		port:      4789,
 	}
 }
@@ -82,9 +82,9 @@ func (p *Handler) Stop() error {
 }
 
 //Send sends a group of packets to a dest endpoint
-func (p *Handler) Send(packets []*protocol.Packet, rdst net.IP) (int, error) {
+func (p *Handler) Send(packets []protocol.Packet, rdst net.IP) (int, error) {
 	for _, packet := range packets {
-		_, err := p.SendOne(packet, rdst)
+		_, err := p.SendOne(&packet, rdst)
 		if err != nil {
 			return 0, err
 		}
@@ -98,7 +98,6 @@ func (p *Handler) SendOne(packet *protocol.Packet, rdst net.IP) (int, error) {
 	addr := &net.UDPAddr{IP: rdst, Port: p.port}
 	i := hash(packet, rdst, p.connCount)
 	return p.conn[i].WriteTo(vxlanFrame.Bytes(), addr)
-
 }
 
 //SetHandler sets the receiving callback
@@ -120,7 +119,7 @@ func (p *Handler) handleIn() {
 				br := bytes.NewBuffer(buff[:n])
 				packet, _ := FromBytes(br)
 
-				p.recv([]*protocol.Packet{protocol.NewPacket(packet.VNID, packet.InnerFrame)})
+				p.recv([]protocol.Packet{protocol.NewPacket(packet.VNID, packet.InnerFrame[:])})
 			}
 		}(conn)
 	}

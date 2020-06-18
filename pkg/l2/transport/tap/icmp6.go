@@ -38,7 +38,7 @@ func (s *Listener) icmp6NDPReduce(packet *protocol.Packet) error {
 		return fmt.Errorf("failed to decode frame: %s", err)
 	}
 
-	mac, _, err := s.sdn.LookupIP(packet.VNID, reqLayers.vlan.VLANIdentifier, reqLayers.icmp.TargetAddress)
+	mac, _, err := s.sdn.LookupIP(packet.VNID, 1, reqLayers.icmp.TargetAddress)
 	if err != nil {
 		return fmt.Errorf("failed to find IP: %s", err)
 	}
@@ -58,12 +58,15 @@ func (s *Listener) icmp6NDPReduce(packet *protocol.Packet) error {
 //decodeICMPv6Frame decodes dot1q, ipv6 and ICMPv6 layers and validates accordingly
 func (s *Listener) decodeICMPv6Frame(frame []byte) (*icmpv6Layers, error) {
 	eth := &layers.Ethernet{}
-	vlan := &layers.Dot1Q{}
+	// vlan := &layers.Dot1Q{}
 	ipv6 := &layers.IPv6{}
 	icmp := &layers.ICMPv6{}
 	icmpv6 := &layers.ICMPv6NeighborSolicitation{}
 
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, eth, vlan, ipv6, icmp, icmpv6)
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
+		eth,
+		// vlan,
+		ipv6, icmp, icmpv6)
 
 	respLayers := make([]gopacket.LayerType, 0)
 	if err := parser.DecodeLayers(frame, &respLayers); err != nil {
@@ -80,7 +83,7 @@ func (s *Listener) decodeICMPv6Frame(frame []byte) (*icmpv6Layers, error) {
 		goto invalidFrame
 	}
 
-	return &icmpv6Layers{ethernet: eth, vlan: vlan, ip: ipv6, icmp: icmpv6}, nil
+	return &icmpv6Layers{ethernet: eth, ip: ipv6, icmp: icmpv6}, nil
 
 invalidFrame:
 	return nil, fmt.Errorf("Invalid ICMPv6")
@@ -93,10 +96,10 @@ func (s *Listener) buildICMPv6NAResponse(reqLayers *icmpv6Layers, mac net.Hardwa
 		DstMAC:       reqLayers.ethernet.SrcMAC,
 		EthernetType: layers.EthernetTypeDot1Q,
 	}
-	vlan := &layers.Dot1Q{
-		VLANIdentifier: reqLayers.vlan.VLANIdentifier,
-		Type:           layers.EthernetTypeIPv6,
-	}
+	// vlan := &layers.Dot1Q{
+	// 	VLANIdentifier: reqLayers.vlan.VLANIdentifier,
+	// 	Type:           layers.EthernetTypeIPv6,
+	// }
 	ipv6 := &layers.IPv6{
 		Version:    6,
 		DstIP:      reqLayers.ip.SrcIP,
@@ -122,7 +125,7 @@ func (s *Listener) buildICMPv6NAResponse(reqLayers *icmpv6Layers, mac net.Hardwa
 	buf := gopacket.NewSerializeBuffer()
 	err := gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
 		eth,
-		vlan,
+		// vlan,
 		ipv6,
 		icmpv6,
 		icmpv6NA)

@@ -118,7 +118,8 @@ func (v *VTEPTransport) AddVLAN(vnid uint32, vlan uint16) error {
 		v.vlans[vlan]++
 	}
 
-	return netlink.BridgeVlanAdd(v.ifaces[vnid], vlan, false, false, false, false)
+	// return netlink.BridgeVlanAdd(v.ifaces[vnid], vlan, false, false, false, false)
+	return nil
 }
 
 //DelVLAN removes a vlan from the VTEP for trunking

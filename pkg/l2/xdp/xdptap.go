@@ -45,7 +45,7 @@ func NewTap(iface netlink.Link, queue int, prog ProgRef) (*Tap, error) {
 func (xdpt *Tap) Write(p []byte) (int, error) {
 	for {
 		if xdpt.xsk.NumFreeTxSlots() == 0 {
-			if err := xdpt.pollTx(); err != nil {
+			if _, err := xdpt.pollTx(); err != nil {
 				return 0, err
 			}
 			continue
@@ -64,7 +64,7 @@ func (xdpt *Tap) Write(p []byte) (int, error) {
 	}
 
 	//Wait
-	if err := xdpt.pollTx(); err != nil {
+	if _, err := xdpt.pollTx(); err != nil {
 		return 0, err
 	}
 
@@ -75,10 +75,10 @@ func (xdpt *Tap) Write(p []byte) (int, error) {
 }
 
 //BatchWrite takes an array of byte arrays to be transmitted
-func (xdpt *Tap) BatchWrite(ps []*BatchDesc) (int, error) {
+func (xdpt *Tap) BatchWrite(ps []BatchDesc) (int, error) {
 	for {
 		if xdpt.xsk.NumFreeTxSlots() <= len(ps) {
-			if err := xdpt.pollTx(); err != nil {
+			if _, err := xdpt.pollTx(); err != nil {
 				return 0, err
 			}
 			continue
@@ -90,7 +90,7 @@ func (xdpt *Tap) BatchWrite(ps []*BatchDesc) (int, error) {
 
 	txSlots := xdpt.xsk.GetDescs(len(ps))
 	for i := range txSlots {
-		ni := copy(xdpt.xsk.GetFrame(txSlots[i]), ps[i].Data[ps[i].Len:])
+		ni := copy(xdpt.xsk.GetFrame(txSlots[i]), ps[i].Data[:ps[i].Len])
 		txSlots[i].Len = uint32(ps[i].Len)
 		n += ni
 	}
@@ -99,7 +99,7 @@ func (xdpt *Tap) BatchWrite(ps []*BatchDesc) (int, error) {
 		return 0, fmt.Errorf("Failed to send")
 	}
 
-	if err := xdpt.pollTx(); err != nil {
+	if _, err := xdpt.pollTx(); err != nil {
 		return 0, err
 	}
 
@@ -120,16 +120,13 @@ func (xdpt *Tap) Read(p []byte) (int, error) {
 			}
 			//Check if poll was for recieving
 			if numrecv != 0 {
-				numrecv--
-				xdpt.recvWaiting.Store(numrecv)
-				ready = numrecv
+				xdpt.recvWaiting.Store(numrecv - 1)
 				break
 			}
 			time.Sleep(1 * time.Microsecond)
 		}
 	} else {
-		ready--
-		xdpt.recvWaiting.Store(ready)
+		xdpt.recvWaiting.Store(ready - 1)
 	}
 	rxDescs := xdpt.xsk.Receive(1)
 	n := copy(p, xdpt.xsk.GetFrame(rxDescs[0]))
@@ -138,7 +135,7 @@ func (xdpt *Tap) Read(p []byte) (int, error) {
 }
 
 //BatchRead batch reads from the tap
-func (xdpt *Tap) BatchRead(ps []*BatchDesc) (bytesRead int, nRead int, err error) {
+func (xdpt *Tap) BatchRead(ps []BatchDesc) (bytesRead int, nRead int, err error) {
 	ready := xdpt.recvWaiting.Load().(int)
 
 	if ready == 0 {
@@ -155,11 +152,6 @@ func (xdpt *Tap) BatchRead(ps []*BatchDesc) (bytesRead int, nRead int, err error
 			}
 			time.Sleep(1 * time.Microsecond)
 		}
-	}
-
-	toRead := ready
-	if toRead > len(ps) {
-		toRead = len(ps)
 	}
 
 	rxDescs := xdpt.xsk.Receive(ready)
@@ -188,15 +180,15 @@ func (xdpt *Tap) Stats() (Stats, error) {
 }
 
 //pollTx polls the fd only for TX events
-func (xdpt *Tap) pollTx() error {
+func (xdpt *Tap) pollTx() (int, error) {
 	var pfds [1]unix.PollFd
 	pfds[0].Fd = int32(xdpt.xsk.FD())
 	pfds[0].Events = unix.POLLOUT
-	_, err := unix.Poll(pfds[:], -1)
+	n, err := unix.Poll(pfds[:], -1)
 	if err != nil {
-		return err
+		return n, err
 	}
-	return nil
+	return n, nil
 }
 
 //pollRx polls the fd only for RX events and provides number of received frames

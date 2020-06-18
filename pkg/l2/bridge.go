@@ -61,9 +61,9 @@ func createBridge(vpcID int32) (*netlink.Bridge, error) {
 		return nil, err
 	}
 
-	if err := enableBridgeVlanFiltering(br.Name); err != nil {
-		return nil, fmt.Errorf("Failed to enable VLAN filtering on bridge: %s", err)
-	}
+	// if err := enableBridgeVlanFiltering(br.Name); err != nil {
+	// 	return nil, fmt.Errorf("Failed to enable VLAN filtering on bridge: %s", err)
+	// }
 
 	err := netlink.LinkSetUp(br)
 

@@ -109,6 +109,7 @@ type rxTxRing struct {
 	Descs    []unix.XDPDesc
 }
 
+//Socket XDP socket
 type Socket struct {
 	fd             int
 	umem           []byte
@@ -166,6 +167,7 @@ func init() {
 	DefaultXdpFlags = 0
 }
 
+//ProgRef BPF precompiled program
 type ProgRef func(xsks_map *ebpf.Map, qidconfMap *ebpf.Map) (*ebpf.Program, error)
 
 // NewSocket returns a new XDP socket attached to the network interface which

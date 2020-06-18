@@ -21,12 +21,12 @@ func TestSendRecv(t *testing.T) {
 	}
 
 	var recvPacket *protocol.Packet
-	handler.SetHandler(func(packets []*protocol.Packet) {
+	handler.SetHandler(func(packets []protocol.Packet) {
 		if len(packets) == 0 {
 			return
 		}
 
-		recvPacket = packets[0]
+		recvPacket = &packets[0]
 	})
 
 	frame := []byte{
@@ -37,10 +37,10 @@ func TestSendRecv(t *testing.T) {
 		0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
 	}
 	var vnid uint32 = 5
-	sendPacket := &protocol.Packet{VNID: vnid, Frame: frame}
+	sendPacket := protocol.Packet{VNID: vnid, Frame: frame}
 	rdst := net.ParseIP("::1")
 
-	_, err := cliHandler.Send([]*protocol.Packet{sendPacket}, rdst)
+	_, err := cliHandler.Send([]protocol.Packet{sendPacket}, rdst)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -72,13 +72,12 @@ func BenchmarkQuicSend(b *testing.B) {
 		0x00, 0x01, 0x00, 0x01, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
 		0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
 	}
-	packet := &protocol.Packet{VNID: 5, Frame: frame}
-	packets := []*protocol.Packet{packet}
+	packets := []protocol.Packet{{VNID: 5, Frame: frame}}
 	rdst := net.ParseIP("::1")
 
 	received := 0
 
-	handler.SetHandler(func(packets []*protocol.Packet) {
+	handler.SetHandler(func(packets []protocol.Packet) {
 		for _, packet := range packets {
 			received += len(packet.Frame)
 		}

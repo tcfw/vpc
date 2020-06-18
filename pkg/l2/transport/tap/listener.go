@@ -11,9 +11,9 @@ import (
 	"github.com/songgao/packets/ethernet"
 	"github.com/tcfw/vpc/pkg/l2/controller"
 
-	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
-	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vpctp"
+	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
 	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
+	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vpctp"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
 
@@ -42,7 +42,7 @@ func NewListener() (*Listener, error) {
 		FDB:    NewFDB(),
 		vlans:  map[uint16]int{},
 		misses: map[uint32]chan transport.ForwardingMiss{},
-		conn:   vxlan.NewHandler(),
+		conn:   vpctp.NewHandler(),
 	}
 
 	return lis, nil
@@ -75,20 +75,19 @@ func (s *Listener) AddEP(vnid uint32, br *netlink.Bridge) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tapHandler, err := NewTap(s, vnid, int(s.mtu), br)
+	tap, err := NewTap(s, vnid, int(s.mtu), br)
 	if err != nil {
 		return err
 	}
 
-	tapHandler.SetHandler(s.Send)
+	tap.SetHandler(s.Send)
 
-	s.taps[vnid] = tapHandler
+	s.taps[vnid] = tap
 	s.misses[vnid] = make(chan transport.ForwardingMiss, 10)
 
-	log.Println("registered new VTEP")
+	go tap.Start()
 
-	go tapHandler.Start()
-	// go tapHandler.HandlePCAP()
+	log.Println("registered new VTEP")
 
 	return nil
 }
@@ -108,7 +107,7 @@ func (s *Listener) DelEP(vnid uint32) error {
 	return nil
 }
 
-func (s *Listener) handleIn(ps []*protocol.Packet) {
+func (s *Listener) handleIn(ps []protocol.Packet) {
 	for _, p := range ps {
 		//Ignore unknown VNIDs
 		tap, ok := s.taps[p.VNID]
@@ -121,26 +120,27 @@ func (s *Listener) handleIn(ps []*protocol.Packet) {
 }
 
 //Send forwards or handles interally a set of packets
-func (s *Listener) Send(ps []*protocol.Packet) {
+func (s *Listener) Send(ps []protocol.Packet) {
 	for _, p := range ps {
 		s.sendOne(p)
 	}
 }
 
-func (s *Listener) sendOne(packet *protocol.Packet) error {
+func (s *Listener) sendOne(packet protocol.Packet) error {
 	frame := ethernet.Frame(packet.Frame)
 
 	//Ignore all non-tagged frames
-	if frame.Tagging() != ethernet.Tagged {
-		return fmt.Errorf("mismatch vlan tags")
-	}
+	// if frame.Tagging() != ethernet.Tagged {
+	// 	log.Printf("Mistagged: %v !: %X", frame.Tagging(), frame)
+	// 	return fmt.Errorf("mismatch vlan tags")
+	// }
 
 	etherType := frame.Ethertype()
 	dst := frame.Destination()
 
 	if etherType == ethernet.ARP { //ARP reduce
 		go func() {
-			if err := s.arpReduce(packet); err != nil {
+			if err := s.arpReduce(&packet); err != nil {
 				log.Printf("failed arp reduce: %s", err)
 			}
 		}()
@@ -149,7 +149,7 @@ func (s *Listener) sendOne(packet *protocol.Packet) error {
 		icmp6Type := frame.Payload()[40]
 		if icmp6Type == layers.ICMPv6TypeNeighborSolicitation {
 			go func() {
-				if err := s.icmp6NDPReduce(packet); err != nil {
+				if err := s.icmp6NDPReduce(&packet); err != nil {
 					log.Printf("failed ICMPv6 NDP reduce: %s", err)
 				}
 			}()
@@ -167,13 +167,13 @@ func (s *Listener) sendOne(packet *protocol.Packet) error {
 			return nil
 		}
 
-		if _, err := s.conn.SendOne(packet, addr); err != nil {
+		if _, err := s.conn.Send([]protocol.Packet{packet}, addr); err != nil {
 			return err
 		}
 	} else {
 		//Flood to all EPs
 		for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
-			if _, err := s.conn.Send([]*protocol.Packet{packet}, addr); err != nil {
+			if _, err := s.conn.Send([]protocol.Packet{packet}, addr); err != nil {
 				return err
 			}
 		}

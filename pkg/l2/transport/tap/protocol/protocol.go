@@ -7,8 +7,7 @@ type Handler interface {
 	Start() error
 	Stop() error
 
-	Send([]*Packet, net.IP) (int, error)
-	SendOne(*Packet, net.IP) (int, error)
+	Send([]Packet, net.IP) (int, error)
 	SetHandler(HandlerFunc)
 }
 
@@ -20,12 +19,12 @@ type Packet struct {
 }
 
 //NewPacket constructs a new packet give an ethernet frame and desired VNID
-func NewPacket(vnid uint32, frame []byte) *Packet {
-	return &Packet{VNID: vnid, Frame: frame}
+func NewPacket(vnid uint32, frame []byte) Packet {
+	return Packet{VNID: vnid, Frame: frame}
 }
 
 //HandlerFunc allows callbacks when receiving packets from a remote source
-type HandlerFunc func([]*Packet)
+type HandlerFunc func([]Packet)
 
 //TestHandler provides a way to track and drop output packets
 //and simulate inbound packets
@@ -52,9 +51,9 @@ func (th *TestHandler) Stop() error {
 }
 
 //Send records to the handled
-func (th *TestHandler) Send(packets []*Packet, rdst net.IP) (int, error) {
+func (th *TestHandler) Send(packets []Packet, rdst net.IP) (int, error) {
 	for _, packet := range packets {
-		th.SendOne(packet, rdst)
+		th.SendOne(&packet, rdst)
 	}
 	return 0, nil
 }
@@ -74,7 +73,7 @@ func (th *TestHandler) SetHandler(h HandlerFunc) {
 }
 
 //Receive allows for packet injection into the tap as if coming from OS
-func (th *TestHandler) Receive(p []*Packet) error {
+func (th *TestHandler) Receive(p []Packet) error {
 	th.recv(p)
 	return nil
 }

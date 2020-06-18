@@ -39,9 +39,9 @@ func CreateNIC(stack *Stack, id string, subnetVlan uint16) (netlink.Link, error)
 		return nil, fmt.Errorf("Failed to add tap device: %s", err)
 	}
 
-	if err := netlink.BridgeVlanAdd(nic, subnetVlan, true, true, false, false); err != nil {
-		return nil, fmt.Errorf("Failed to add VLAN to nic: %s", err)
-	}
+	// if err := netlink.BridgeVlanAdd(nic, subnetVlan, false, true, false, false); err != nil {
+	// 	return nil, fmt.Errorf("Failed to add VLAN to nic: %s", err)
+	// }
 
 	if err := netlink.LinkSetUp(nic); err != nil {
 		return nic, fmt.Errorf("failed to set nic to up: %s", err)

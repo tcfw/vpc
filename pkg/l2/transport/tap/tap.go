@@ -12,11 +12,12 @@ import (
 	"github.com/vishvananda/netlink"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
+	"github.com/tcfw/vpc/pkg/l2/xdp"
 )
 
 const (
 	vtepPattern = "t-%d"
-	tapQueues   = 2
+	tapQueues   = 1
 )
 
 //Nic basic NIC that can send a receive packets to and from a compute service
@@ -37,42 +38,74 @@ type Tap struct {
 	iface       netlink.Link
 	mtu         int
 	tx          protocol.HandlerFunc
+	xdp         []*xdp.Tap
 }
 
 //NewTap creates a tap interface on the specified bridge
 func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error) {
-	iface := &netlink.Tuntap{
-		Mode: netlink.TUNTAP_MODE_TAP,
+	// iface := &netlink.Tuntap{
+	// 	Mode: netlink.TUNTAP_MODE_TAP,
+	// 	LinkAttrs: netlink.LinkAttrs{
+	// 		Name: fmt.Sprintf(vtepPattern, vnid),
+	// 		MTU:  mtu,
+	// 	},
+	// 	Flags:  netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
+	// 	Queues: tapQueues,
+	// }
+	iface := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
-			Name:        fmt.Sprintf(vtepPattern, vnid),
-			MTU:         mtu,
-			MasterIndex: br.Index,
+			Name: fmt.Sprintf(vtepPattern, vnid),
+			MTU:  mtu,
 		},
-		Flags: netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
+		PeerName: fmt.Sprintf(vtepPattern+"-p", vnid),
 	}
 
 	if err := netlink.LinkAdd(iface); err != nil {
+		return nil, fmt.Errorf("failed to add link: %s", err)
+	}
+
+	ifacePeer, err := netlink.LinkByName(iface.PeerName)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := netlink.LinkSetTxQLen(iface, 10000); err != nil {
-		return nil, err
+	if br != nil {
+		if err := netlink.LinkSetMaster(iface, br); err != nil {
+			return nil, fmt.Errorf("failed to set link master: %s", err)
+		}
 	}
+
+	//Attempt to set higher queue size, ignore failures
+	netlink.LinkSetTxQLen(iface, 10000)
+	// netlink.SetPromiscOn(iface)
+
+	if err := netlink.LinkSetUp(iface); err != nil {
+		return nil, fmt.Errorf("failed to bring up tap: %s", err)
+	}
+
+	netlink.LinkSetUp(ifacePeer)
 
 	tapHandler := &Tap{
 		vnid:    vnid,
 		iface:   iface,
-		mtu:     int(s.mtu),
+		mtu:     mtu,
 		tuntaps: []*tuntapDev{},
+		xdp:     []*xdp.Tap{},
 	}
 
-	//Create 2 listening queues through multiqueue tap option
+	//Create i queues through multiqueue tap option
 	for i := 0; i < tapQueues; i++ {
-		ifce, err := tapHandler.openDev(iface.Name)
+		// ifce, err := tapHandler.openDev(iface.Name)
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+		// tapHandler.tuntaps = append(tapHandler.tuntaps, ifce)
+		xdp, err := xdp.NewTap(ifacePeer, i, nil)
 		if err != nil {
-			log.Fatal(err)
+			netlink.LinkDel(iface)
+			return nil, err
 		}
-		tapHandler.tuntaps = append(tapHandler.tuntaps, ifce)
+		tapHandler.xdp = append(tapHandler.xdp, xdp)
 	}
 
 	return tapHandler, nil
@@ -89,8 +122,8 @@ func (v *Tap) Start() {
 
 	var wg sync.WaitGroup
 
-	for _, tap := range v.tuntaps {
-		go v.handleTapPipe(&wg, tap)
+	for _, xdp := range v.xdp {
+		go v.handleBatchXDP(&wg, xdp)
 	}
 
 	wg.Wait()
@@ -109,7 +142,7 @@ func (v *Tap) handleTapPipe(wg *sync.WaitGroup, tap *tuntapDev) {
 		}
 
 		//TODO(tcfw) add to drop metrics on error
-		v.tx([]*protocol.Packet{protocol.NewPacket(v.vnid, buf[:n])})
+		v.tx([]protocol.Packet{protocol.NewPacket(v.vnid, buf[:n])})
 	}
 }
 
@@ -122,7 +155,68 @@ func (v *Tap) handlePCAP() {
 			return
 		}
 
-		v.tx([]*protocol.Packet{protocol.NewPacket(v.vnid, frame.Data())})
+		v.tx([]protocol.Packet{protocol.NewPacket(v.vnid, frame.Data())})
+	}
+}
+
+func (v *Tap) handleXDP(wg *sync.WaitGroup, xdpt *xdp.Tap) {
+	wg.Add(1)
+	defer wg.Done()
+
+	descs := make([]xdp.BatchDesc, 64)
+	for _, desc := range descs {
+		desc.Data = make([]byte, 2048)
+	}
+
+	packs := make([]protocol.Packet, 64)
+
+	for {
+		_, n, err := xdpt.BatchRead(descs)
+		if err != nil {
+			log.Printf("Failed to xdp read: %s", err)
+			return
+		}
+
+		for i := 0; i < n; i++ {
+			packs[i] = protocol.NewPacket(v.vnid, descs[i].Data[:descs[i].Len])
+		}
+
+		//TODO(tcfw) add to drop metrics on error
+		v.tx(packs[:n])
+	}
+}
+
+func (v *Tap) handleBatchXDP(wg *sync.WaitGroup, xdpt *xdp.Tap) {
+	wg.Add(1)
+	defer wg.Done()
+
+	//Preallocate
+	descs := make([]xdp.BatchDesc, 64)
+	for i := range descs {
+		descs[i] = xdp.BatchDesc{
+			Data: make([]byte, v.mtu),
+		}
+	}
+	packs := make([]protocol.Packet, 2048)
+	for i := range packs {
+		packs[i] = protocol.Packet{
+			VNID:  v.vnid,
+			Frame: make([]byte, v.mtu),
+		}
+	}
+
+	var i int
+	for {
+		_, dn, err := xdpt.BatchRead(descs)
+		if err != nil {
+			return
+		}
+
+		for i = 0; i < dn; i++ {
+			packs[i].Frame = descs[i].Data[:descs[i].Len]
+		}
+
+		v.tx(packs[:dn])
 	}
 }
 
@@ -133,7 +227,13 @@ func (v *Tap) SetHandler(h protocol.HandlerFunc) {
 
 //Write sends a packet to the bridge
 func (v *Tap) Write(b []byte) (int, error) {
-	return v.tuntaps[v.woHash(b)].WriteRaw(b)
+	return v.xdp[v.woHash(b)].Write(b)
+}
+
+//WriteBatch writes batches of packets to a single XDP queue
+//Queue selection is based on the first packet provided
+func (v *Tap) WriteBatch(bs []xdp.BatchDesc) (int, error) {
+	return v.xdp[v.woHash(bs[0].Data[:bs[0].Len])].BatchWrite(bs)
 }
 
 func (v *Tap) woHash(b []byte) int {
@@ -145,6 +245,7 @@ func (v *Tap) woHash(b []byte) int {
 //Delete removes the actual nic from the OS
 func (v *Tap) Delete() error {
 	return netlink.LinkDel(v.iface)
+	// return nil
 }
 
 //IFace returns the underlying OS NIC

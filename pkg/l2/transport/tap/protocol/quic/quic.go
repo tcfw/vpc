@@ -46,7 +46,7 @@ func NewHandler() *Handler {
 	return &Handler{
 		epConns: map[string]*epConn{},
 		port:    port,
-		recv:    func(_ []*protocol.Packet) {},
+		recv:    func(_ []protocol.Packet) {},
 	}
 }
 
@@ -98,7 +98,7 @@ func (p *Handler) Stop() error {
 }
 
 //Send sends a frame to an endpoint
-func (p *Handler) Send(packets []*protocol.Packet, addr net.IP) (int, error) {
+func (p *Handler) Send(packets []protocol.Packet, addr net.IP) (int, error) {
 	addrID := addr.String()
 	conn, ok := p.epConns[addrID]
 	if !ok {
@@ -304,6 +304,6 @@ func (p *Handler) handleStream(hello *helloFrame, stream quic.Stream) {
 			return
 		}
 
-		p.recv([]*protocol.Packet{&protocol.Packet{VNID: hello.vnid, Frame: buf[:n]}})
+		p.recv([]protocol.Packet{{VNID: hello.vnid, Frame: buf[:n]}})
 	}
 }

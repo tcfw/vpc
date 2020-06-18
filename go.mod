@@ -31,6 +31,7 @@ require (
 	github.com/onsi/gomega v1.8.1 // indirect
 	github.com/osrg/gobgp v0.0.0-20200602125502-33e3bb6b2756
 	github.com/pelletier/go-toml v1.6.0 // indirect
+	github.com/prometheus/common v0.4.0
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/smartystreets/assertions v1.0.1 // indirect

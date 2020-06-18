@@ -21,8 +21,8 @@ type Packet struct {
 }
 
 //NewPacket encaps a inner packet with VXlan headers
-func NewPacket(vnid uint32, innerFrame []byte) *Packet {
-	return &Packet{
+func NewPacket(vnid uint32, innerFrame []byte) Packet {
+	return Packet{
 		Flags:       0x08,
 		GroupPolicy: 0,
 		VNID:        vnid,

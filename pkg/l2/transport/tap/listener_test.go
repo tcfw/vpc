@@ -30,53 +30,97 @@ func BenchmarkL2Fwd(b *testing.B) {
 	tap.SetHandler(lis.Send)
 	fdb.AddEntry(vnid, net.HardwareAddr{0xCC, 0x03, 0x04, 0xDC, 0x00, 0x10}, net.ParseIP("1.1.1.1"))
 
-	//Construct the packet to send
-	frame := constructPacket()
+	frame, _ := constructPacket()
 	frameLen := int64(len(frame))
 
-	frames := []*protocol.Packet{&protocol.Packet{VNID: vnid, Frame: frame}}
-
-	var n int64 = 0
-
-	b.ResetTimer()
+	frames := []protocol.Packet{{VNID: vnid, Frame: frame[:]}}
 
 	b.Run("Send", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			tap.Receive(frames)
-			n += frameLen
 			b.SetBytes(frameLen)
 		}
 	})
 }
 
-func constructPacket() []byte {
-	ethernetLayer := &layers.Ethernet{
-		SrcMAC:       net.HardwareAddr{0xFF, 0xAA, 0xFA, 0xAA, 0xFF, 0xAA},
-		DstMAC:       net.HardwareAddr{0xCC, 0x03, 0x04, 0xDC, 0x00, 0x10},
+func constructPacket() ([]byte, error) {
+	srcMAC := []byte{0xb2, 0x96, 0x81, 0x75, 0xb2, 0x11}
+	dstMAC := []byte{0xe6, 0x15, 0x9c, 0x38, 0xf6, 0xe7}
+	SrcIP := "127.0.0.1"
+	DstIP := "8.8.8.8"
+	SrcPort := 87654
+	DstPort := 87654
+
+	eth := &layers.Ethernet{
+		SrcMAC:       net.HardwareAddr(srcMAC),
+		DstMAC:       net.HardwareAddr(dstMAC),
 		EthernetType: layers.EthernetTypeDot1Q,
 	}
-	vlanLayer := &layers.Dot1Q{
-		VLANIdentifier: 1,
+	vlan := &layers.Dot1Q{
+		VLANIdentifier: 5,
+		Type:           layers.EthernetTypeIPv4,
 	}
-	ipLayer := &layers.IPv4{
-		SrcIP: net.IP{127, 0, 0, 1},
-		DstIP: net.IP{8, 8, 8, 8},
+	ip := &layers.IPv4{
+		Version:  4,
+		IHL:      5,
+		TTL:      64,
+		Id:       0,
+		Protocol: layers.IPProtocolUDP,
+		SrcIP:    net.ParseIP(SrcIP).To4(),
+		DstIP:    net.ParseIP(DstIP).To4(),
 	}
-
-	icmpLayer := &layers.ICMPv4{
-		TypeCode: layers.ICMPv4TypeEchoRequest,
-		Id:       1,
-		Seq:      1,
+	udp := &layers.UDP{
+		SrcPort: layers.UDPPort(SrcPort),
+		DstPort: layers.UDPPort(DstPort),
 	}
-
+	udp.SetNetworkLayerForChecksum(ip)
 	buffer := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{},
-		ethernetLayer,
-		vlanLayer,
-		ipLayer,
-		icmpLayer,
-		gopacket.Payload([]byte("123456789abcdefghijklmnopqrstuvwxyz")),
+	err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	},
+		eth, vlan, ip, udp,
+		gopacket.Payload([]byte("123456789abcdefghi123456789abcdefghi")),
 	)
 
-	return buffer.Bytes()
+	return buffer.Bytes(), err
+}
+
+func constructVPCPacket() ([]byte, error) {
+	srcMAC := []byte{0xb2, 0x96, 0x81, 0x75, 0xb2, 0x11}
+	dstMAC := []byte{0xe6, 0x15, 0x9c, 0x38, 0xf6, 0xe7}
+	SrcIP := "127.0.0.1"
+	DstIP := "8.8.8.8"
+	SrcPort := 87654
+	DstPort := 87654
+
+	eth := &layers.Ethernet{
+		SrcMAC:       net.HardwareAddr(srcMAC),
+		DstMAC:       net.HardwareAddr(dstMAC),
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+	ip := &layers.IPv4{
+		Version:  4,
+		IHL:      5,
+		TTL:      64,
+		Id:       0,
+		Protocol: 172,
+		SrcIP:    net.ParseIP(SrcIP).To4(),
+		DstIP:    net.ParseIP(DstIP).To4(),
+	}
+	udp := &layers.UDP{
+		SrcPort: layers.UDPPort(SrcPort),
+		DstPort: layers.UDPPort(DstPort),
+	}
+	udp.SetNetworkLayerForChecksum(ip)
+	buffer := gopacket.NewSerializeBuffer()
+	err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	},
+		eth, ip, udp,
+		gopacket.Payload([]byte("123456789abcdefghi123456789")),
+	)
+
+	return buffer.Bytes(), err
 }
