@@ -40,10 +40,10 @@ func (s *Listener) arpReduce(packet *protocol.Packet) error {
 		return fmt.Errorf("failed to build arp response: %s", err)
 	}
 
-	log.Printf("ARP REPLY: %s", mac)
-	s.taps[packet.VNID].Write(resp)
+	log.Printf("ARP REPLY: %s - % X", mac, resp)
+	_, err = s.taps[packet.VNID].Write(resp)
 
-	return nil
+	return err
 }
 
 //decodeARPFrame decodes dot1q and arp layers and validates accordingly
@@ -101,10 +101,10 @@ func (s *Listener) buildARPResponse(vlanID uint16, arpRequest *layers.ARP, mac n
 	}
 
 	buf := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
+	err := gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
 		eth,
 		// vlan,
 		arp)
 
-	return buf.Bytes(), nil
+	return buf.Bytes(), err
 }

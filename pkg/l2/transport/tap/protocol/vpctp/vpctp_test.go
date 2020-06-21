@@ -31,7 +31,7 @@ func TestMarshalIPv4(t *testing.T) {
 	b, err := v.toBytes(p, net.IP{127, 0, 0, 1})
 	if assert.NoError(t, err) {
 		t.Logf("% X", b)
-		pfb, _ := v.toPacket(b)
+		pfb, _ := v.toPacket(b, true)
 
 		assert.Equal(t, p.VNID, pfb.VNID)
 		assert.Equal(t, p.Source, pfb.Source)
@@ -59,7 +59,7 @@ func TestMarshalIPv6(t *testing.T) {
 	b, err := v.toBytes(p, dstIP)
 	if assert.NoError(t, err) {
 		t.Logf("% X", b)
-		pfb, _ := v.toPacket(b)
+		pfb, _ := v.toPacket(b, true)
 
 		assert.Equal(t, p.VNID, pfb.VNID)
 		assert.Equal(t, p.Source, pfb.Source)
@@ -372,6 +372,7 @@ func TestArpRequest(t *testing.T) {
 	b, err := v.arpRequest(net.ParseIP("1.1.1.1"))
 	assert.NoError(t, err)
 	t.Logf("% X", b)
+	//TODO(@tcfw) actually test the results
 }
 
 func TestIPv6NeighSoli(t *testing.T) {
@@ -380,5 +381,6 @@ func TestIPv6NeighSoli(t *testing.T) {
 	v.listenAddr = net.ParseIP("2001:DB8::1")
 	b, err := v.neighborSolicitation(net.ParseIP("2001:DB8::2"))
 	assert.NoError(t, err)
-	t.Fatalf("% X", b)
+	t.Logf("% X", b)
+	//TODO(@tcfw) actually test the results
 }

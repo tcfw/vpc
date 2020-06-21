@@ -138,14 +138,16 @@ func (s *Listener) sendOne(packet protocol.Packet) error {
 	etherType := frame.Ethertype()
 	dst := frame.Destination()
 
-	if etherType == ethernet.ARP { //ARP reduce
+	if etherType == ethernet.ARP {
+		//ARP reduce
 		go func() {
 			if err := s.arpReduce(&packet); err != nil {
 				log.Printf("failed arp reduce: %s", err)
 			}
 		}()
 		return nil
-	} else if etherType == ethernet.IPv6 && packet.Frame[24] == 0x3a { //ICMPv6 NDP reducer - 0x3a = ICMPv6
+	} else if etherType == ethernet.IPv6 && packet.Frame[24] == 0x3a {
+		//ICMPv6 NDP reduce
 		icmp6Type := frame.Payload()[40]
 		if icmp6Type == layers.ICMPv6TypeNeighborSolicitation {
 			go func() {
@@ -157,26 +159,27 @@ func (s *Listener) sendOne(packet protocol.Packet) error {
 		}
 	}
 
-	if bytes.Compare(dst, net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}) != 0 {
-		addr := s.FDB.LookupMac(packet.VNID, dst)
-
-		if addr == nil {
-			go func() {
-				s.misses[packet.VNID] <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
-			}()
-			return nil
-		}
-
-		if _, err := s.conn.Send([]protocol.Packet{packet}, addr); err != nil {
-			return err
-		}
-	} else {
+	if bytes.Compare(dst, s.FDB.broadcastMac) == 0 {
 		//Flood to all EPs
-		for _, addr := range s.FDB.ListBroadcast(packet.VNID) {
-			if _, err := s.conn.Send([]protocol.Packet{packet}, addr); err != nil {
+		for _, vtep := range s.FDB.ListBroadcast(packet.VNID) {
+			if _, err := s.conn.Send([]protocol.Packet{packet}, vtep); err != nil {
 				return err
 			}
 		}
+		return nil
+	}
+
+	dstVtep := s.FDB.LookupMac(packet.VNID, dst)
+
+	if dstVtep == nil {
+		go func() {
+			s.misses[packet.VNID] <- transport.ForwardingMiss{Type: transport.MissTypeEP, HwAddr: dst}
+		}()
+		return nil
+	}
+
+	if _, err := s.conn.Send([]protocol.Packet{packet}, dstVtep); err != nil {
+		return err
 	}
 
 	return nil

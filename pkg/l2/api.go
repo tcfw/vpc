@@ -118,7 +118,7 @@ func (s *Server) SDN() {
 
 	var rID net.IP
 
-	addrs := append(ip4s, ip6s...)
+	addrs := append(ip6s, ip4s...)
 	for _, addr := range addrs {
 		if !addr.IP.IsLoopback() && addr.IP.IsGlobalUnicast() {
 			rID = addr.IP
@@ -329,9 +329,9 @@ func (s *Server) AddNIC(ctx context.Context, req *l2API.NicRequest) (*l2API.Nic,
 		s.sdn.RegisterMacIP(uint32(req.VpcId), req.SubnetVlanId, hwaddr, net.ParseIP(ip))
 	}
 
-	if err := s.transport.AddVLAN(uint32(stack.VPCID), uint16(req.SubnetVlanId)); err != nil {
-		log.Printf("failed to update vlan trunk: %s", err)
-	}
+	// if err := s.transport.AddVLAN(uint32(stack.VPCID), uint16(req.SubnetVlanId)); err != nil {
+	// 	log.Printf("failed to update vlan trunk: %s", err)
+	// }
 
 	s.logChange(&l2API.StackChange{
 		VpcId:  req.VpcId,
@@ -393,9 +393,9 @@ func (s *Server) DeleteNIC(ctx context.Context, req *l2API.Nic) (*l2API.Empty, e
 
 	nic, ok := stack.Nics[req.Id]
 
-	if err := s.transport.DelVLAN(uint32(stack.VPCID), nic.vlan); err != nil {
-		log.Printf("failed to update vlan trunk: %s", err)
-	}
+	// if err := s.transport.DelVLAN(uint32(stack.VPCID), nic.vlan); err != nil {
+	// 	log.Printf("failed to update vlan trunk: %s", err)
+	// }
 
 	if ok && !nic.manual {
 		err = DeleteNIC(stack, req.Id)

@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/asm"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/spf13/viper"
@@ -110,10 +108,22 @@ func (vtp *VPCTP) Start() error {
 	vtp.iface = link
 	vtp.hwaddr = link.Attrs().HardwareAddr
 
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
-	if err != nil || len(addrs) == 0 {
+	//Check IPv6 first
+	// ipv6Addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to quer for ipv6 addrs: %s", err)
+	// }
+	ipv4Addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		return fmt.Errorf("failed to quer for ipv6 addrs: %s", err)
+	}
+
+	// addrs := append(ipv6Addrs, ipv4Addrs...)
+	addrs := ipv4Addrs
+	if len(addrs) == 0 {
 		return fmt.Errorf("failed to get addr from dev; is it set up?")
 	}
+
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() || addr.IP.IsGlobalUnicast() || addr.IP.IsLoopback() {
 			vtp.listenAddr = addr.IP
@@ -130,73 +140,8 @@ func (vtp *VPCTP) Start() error {
 		}
 	}
 
-	//TODO(tcfw) support multiqueue devices
-	xsk, err := xdp.NewTap(link, 0, func(xsksMap *ebpf.Map, qidMap *ebpf.Map) (*ebpf.Program, error) {
-		return ebpf.NewProgram(&ebpf.ProgramSpec{
-			Name:          "vpc_xsk_ebpf",
-			Type:          ebpf.XDP,
-			License:       "LGPL-2.1 or BSD-2-Clause",
-			KernelVersion: 0,
-			Instructions: asm.Instructions{
-				//# int xdp_sock_prog(struct xdp_md *ctx) {
-				{OpCode: 0xbf, Src: 0x1, Dst: 0x6}, //0: r6 = r1
-				//# int *qidconf, index = ctx->rx_queue_index;
-				{OpCode: 0x61, Src: 0x6, Dst: 0x1, Offset: 0x10}, //1: r1 = *(u32 *)(r6 + 16)
-				{OpCode: 0x63, Src: 0x1, Dst: 0xa, Offset: -4},   //2: *(u32 *)(r10 - 4) = r1
-				{OpCode: 0xbf, Src: 0xa, Dst: 0x2},               //3: r2 = r10
-				{OpCode: 0x07, Dst: 0x2, Constant: -4},           //4: r2 += -4
-				//# qidconf = bpf_map_lookup_elem(&qidconf_map, &index);
-				{OpCode: 0x18, Src: 0x1, Dst: 0x1, Constant: int64(qidMap.FD())}, //5: r1 = 0 ll
-				{OpCode: 0x85, Constant: 0x1},                                    //7: call 1
-				{OpCode: 0xbf, Src: 0x0, Dst: 0x1},                               //8: r1 = r0
-				{OpCode: 0xb7, Dst: 0x0, Constant: 0},                            //9: r0 = 0
-				//# if (!qidconf)
-				{OpCode: 0x15, Dst: 0x1, Offset: 0x1f},   //10: if r1 == 0 goto +31
-				{OpCode: 0xb7, Dst: 0x0, Constant: 0x02}, //11: r0 = 2
-				//# if (!*qidconf)
-				{OpCode: 0x61, Src: 0x1, Dst: 0x1, Constant: 0}, //12: r1 = *(u32 *)(r1 + 0)
-				{OpCode: 0x15, Dst: 0x1, Offset: 0x1c},          //13: if r1 == 0 goto +28
-				//# void *data_end = (void *)(long)ctx->data_end;
-				{OpCode: 0x61, Src: 0x6, Dst: 0x2, Offset: 0x04}, //14: r2 = *(u32 *)(r6 + 4)
-				//# void *data = (void *)(long)ctx->data;
-				{OpCode: 0x61, Src: 0x6, Dst: 0x1, Constant: 0}, //15: r1 = *(u32 *)(r6 + 0)
-				//# if (data + nh_off > data_end)
-				{OpCode: 0xbf, Src: 0x1, Dst: 0x3},               //16: r3 = r1
-				{OpCode: 0x07, Dst: 0x3, Constant: 0x0e},         //17: r3 += 14
-				{OpCode: 0x2d, Src: 0x2, Dst: 0x3, Offset: 0x17}, //18: if r3 > r2 goto +23
-				//# h_proto = eth->h_proto;
-				{OpCode: 0x71, Src: 0x1, Dst: 0x4, Offset: 0x0c}, //19: r4 = *(u8 *)(r1 + 12)
-				{OpCode: 0x71, Src: 0x1, Dst: 0x3, Offset: 0x0d}, //20: r3 = *(u8 *)(r1 + 13)
-				{OpCode: 0x67, Dst: 0x3, Constant: 0x08},         //21: r3 <<= 8
-				{OpCode: 0x4f, Src: 0x4, Dst: 0x3},               //22: r3 |= r4
-				//# if (h_proto == __bpf_constant_htons(ETH_P_IP))
-				{OpCode: 0x15, Dst: 0x3, Offset: 0x06, Constant: 0x86dd}, //23: if r3 == 56710 goto +6
-				{OpCode: 0x55, Dst: 0x3, Offset: 0x11, Constant: 0x08},   //24: if r3 != 8 goto +17
-				{OpCode: 0xb7, Dst: 0x3, Constant: 0x17},                 //25: r3 = 23
-				//# if (iph + 1 > data_end)
-				{OpCode: 0xbf, Src: 0x1, Dst: 0x4},               //26: r4 = r1
-				{OpCode: 0x07, Dst: 0x4, Constant: 0x22},         //27: r4 += 34
-				{OpCode: 0x2d, Src: 0x2, Dst: 0x4, Offset: 0x0d}, //28: if r4 > r2 goto +13
-				{OpCode: 0x05, Offset: 0x04},                     //29: goto +4
-				{OpCode: 0xb7, Dst: 0x3, Constant: 0x14},         //30: r3 = 20
-				//# if (ip6h + 1 > data_end)
-				{OpCode: 0xbf, Src: 0x1, Dst: 0x4},               //31: r4 = r1
-				{OpCode: 0x07, Dst: 0x4, Constant: 0x36},         //32: r4 += 54
-				{OpCode: 0x2d, Src: 0x2, Dst: 0x4, Offset: 0x08}, //33: if r4 > r2 goto +8
-				{OpCode: 0x0f, Src: 0x3, Dst: 0x1},               //34: r1 += r3
-				{OpCode: 0x71, Src: 0x1, Dst: 0x1, Constant: 0},  //35: r1 = *(u8 *)(r1 + 0)
-				//# if (ipproto != VPC_PROTO)
-				{OpCode: 0x55, Dst: 0x1, Offset: 0x05, Constant: IPPROTO}, //36: if r1 != 172 goto +5
-				//# return bpf_redirect_map(&xsks_map, index, 0);
-				{OpCode: 0x61, Src: 0xa, Dst: 0x2, Offset: -4},                    //37: r2 = *(u32 *)(r10 - 4)
-				{OpCode: 0x18, Src: 0x1, Dst: 0x1, Constant: int64(xsksMap.FD())}, //38: r1 = 0 ll
-				{OpCode: 0xb7, Dst: 0x3, Constant: 0},                             //40: r3 = 0
-				{OpCode: 0x85, Constant: 0x33},                                    //41: call 51
-				//# }
-				{OpCode: 0x95}, //42: exit
-			},
-		})
-	})
+	//TODO(tcfw) support multiqueue devices against ethtool
+	xsk, err := xdp.NewTap(link, 0, vpctpEbpfProg)
 	if err != nil {
 		return err
 	}
@@ -294,7 +239,11 @@ func (vtp *VPCTP) Send(ps []protocol.Packet, addr net.IP) (int, error) {
 	return vtp.xsk.BatchWrite(vtp.txDesc[:len(ps)])
 }
 
+//listen reads from the XDP UMEM reading packets off the network interface
+//Also starts up the backup protocol handler
 func (vtp *VPCTP) listen() {
+	go vtp.listenPC()
+
 	pks := make([]protocol.Packet, 64)
 	var i int
 	for {
@@ -305,7 +254,7 @@ func (vtp *VPCTP) listen() {
 		}
 
 		for i = 0; i < n; i++ {
-			pp, err := vtp.toPacket(vtp.rxDesc[i].Data[:vtp.rxDesc[i].Len])
+			pp, err := vtp.toPacket(vtp.rxDesc[i].Data[:vtp.rxDesc[i].Len], true)
 			if err == nil {
 				pks[i] = pp
 			}
@@ -315,6 +264,34 @@ func (vtp *VPCTP) listen() {
 	}
 }
 
+//listenPC starts a _backup_ protocol handler
+//This is used when some other interface picks up our protocol outside of the XDP
+//like a bridge
+func (vtp *VPCTP) listenPC() {
+	pconn, err := net.ListenPacket("ip:172", "")
+	if err != nil {
+		log.Printf("failed to start loopback protocol hander: %s", err)
+		return
+	}
+
+	buf := make([]byte, 2048)
+	for {
+		_, _, err := pconn.ReadFrom(buf)
+		if err != nil {
+			log.Printf("vpctp-pconn: failed to read packet: %s", err)
+			continue
+		}
+
+		p, err := vtp.toPacket(buf, false)
+		if err != nil {
+			log.Printf("vpctp-pconn: invalid packet received")
+		}
+
+		vtp.recv([]protocol.Packet{p})
+	}
+}
+
+//toBytes converts the raw VPC packet to a lower-level network packet
 func (vtp *VPCTP) toBytes(p *protocol.Packet, addr net.IP) ([]byte, error) {
 	dstMac, err := vtp.dstMac(addr)
 	if err != nil {
@@ -324,7 +301,7 @@ func (vtp *VPCTP) toBytes(p *protocol.Packet, addr net.IP) ([]byte, error) {
 	vtp.buf.Reset()
 
 	if vtp.ipType == layers.EthernetTypeIPv6 {
-		vtp.prependEthIPV6(p, addr, dstMac)
+		vtp.ethIPV6Frames(p, addr, dstMac)
 	}
 
 	vtp.buf.WriteByte(byte(p.VNID))
@@ -374,7 +351,9 @@ func (vtp *VPCTP) toBytes(p *protocol.Packet, addr net.IP) ([]byte, error) {
 	return vtp.tbuf.Bytes(), err
 }
 
-func (vtp *VPCTP) prependEthIPV6(p *protocol.Packet, addr net.IP, dstMAC net.HardwareAddr) {
+//ethIPV6Frames prepends the ethernet & ipv6 frames to the main buffer
+//the IPv6 flow label is set to the LSBs of the VNID
+func (vtp *VPCTP) ethIPV6Frames(p *protocol.Packet, addr net.IP, dstMAC net.HardwareAddr) {
 	//eth
 	vtp.buf.Write(dstMAC)
 	vtp.buf.Write(vtp.hwaddr)
@@ -399,18 +378,24 @@ func (vtp *VPCTP) prependEthIPV6(p *protocol.Packet, addr net.IP, dstMAC net.Har
 	vtp.buf.Write(addr)           //dst
 }
 
-func (vtp *VPCTP) toPacket(b []byte) (protocol.Packet, error) {
+//toPacket converts the raw packet to a usable VPC packet
+func (vtp *VPCTP) toPacket(b []byte, includesNet bool) (protocol.Packet, error) {
+	var d []byte
+	if includesNet {
+		pckd := gopacket.NewPacket(b, layers.LayerTypeEthernet, gopacket.NoCopy)
+		dNet := pckd.NetworkLayer()
 
-	pckd := gopacket.NewPacket(b, layers.LayerTypeEthernet, gopacket.NoCopy)
-	dNet := pckd.NetworkLayer()
+		if dNet.LayerType() == layers.LayerTypeIPv4 && dNet.(*layers.IPv4).Protocol != IPPROTO {
+			return protocol.Packet{}, fmt.Errorf("Invalid IPv4 protocol")
+		} else if dNet.LayerType() == layers.LayerTypeIPv6 && dNet.(*layers.IPv6).NextHeader != IPPROTO {
+			return protocol.Packet{}, fmt.Errorf("Invalid IPv6 protocol")
+		}
 
-	if dNet.LayerType() == layers.LayerTypeIPv4 && dNet.(*layers.IPv4).Protocol != IPPROTO {
-		return protocol.Packet{}, fmt.Errorf("Invalid IPv4 protocol")
-	} else if dNet.LayerType() == layers.LayerTypeIPv6 && dNet.(*layers.IPv6).NextHeader != IPPROTO {
-		return protocol.Packet{}, fmt.Errorf("Invalid IPv6 protocol")
+		d = dNet.LayerPayload()
+	} else {
+		d = b
 	}
 
-	d := dNet.LayerPayload()
 	pack := protocol.Packet{}
 
 	//VNID
@@ -425,6 +410,8 @@ func (vtp *VPCTP) toPacket(b []byte) (protocol.Packet, error) {
 	return pack, nil
 }
 
+//dstMac calculates the destination MAC address of addr
+//if the neighbor doesn't exist, it will attempt to discover
 func (vtp *VPCTP) dstMac(addr net.IP) (net.HardwareAddr, error) {
 	vtp.fibCMu.RLock()
 	defer vtp.fibCMu.RUnlock()
@@ -466,6 +453,7 @@ func (vtp *VPCTP) dstMac(addr net.IP) (net.HardwareAddr, error) {
 	return gwMac, nil
 }
 
+//arp constructs a simple arp packet
 func (vtp *VPCTP) arp(addr net.IP) (net.HardwareAddr, error) {
 	log.Printf("Looking up: %s", addr)
 
