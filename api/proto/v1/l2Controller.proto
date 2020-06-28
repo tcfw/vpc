@@ -1,0 +1,54 @@
+syntax="proto3";
+
+package vpc.l2Controller;
+
+option go_package = "l2Controller";
+
+message MACIPRequest {
+	uint32 VNID = 1;
+	uint32 VLAN = 2;
+	string MAC = 3;
+	string IP = 4;
+}
+
+message MACIPResp {
+}
+
+enum LookupType {
+	MAC = 0;
+	IP = 1;
+}
+
+message LookupRequest {
+	LookupType LookupType = 1;
+
+	uint32 VNID = 2;
+	uint32 VLAN = 3;
+	string MAC = 4;
+	string IP = 5;
+}
+
+message LookupResponse {
+	string MAC = 1;
+	string IP = 2;
+}
+
+message VNIDRequest {
+	uint32 VNID = 1;
+}
+
+message RegResponse {}
+
+message BroadcastEndpointResponse {
+	repeated string IP = 1;
+}
+
+service ControllerService {
+	rpc RegisterMacIP(MACIPRequest) returns (MACIPResp) {};
+	rpc DeregisterMacIP(MACIPRequest) returns (MACIPResp) {};
+	rpc LookupIP(LookupRequest) returns (LookupResponse) {};
+	rpc LookupMac(LookupRequest) returns (LookupResponse) {};
+	rpc BroadcastEndpoints(VNIDRequest) returns (BroadcastEndpointResponse) {};
+	rpc RegisterEP(VNIDRequest) returns (RegResponse) {};
+	rpc DeregisterEP(VNIDRequest) returns (RegResponse) {};
+}

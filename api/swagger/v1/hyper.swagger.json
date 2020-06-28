@@ -15,5 +15,292 @@
     "application/json"
   ],
   "paths": {},
-  "definitions": {}
+  "definitions": {
+    "PowerRequestPowerType": {
+      "type": "string",
+      "enum": [
+        "REBOOT",
+        "SHUTDOWN",
+        "FORCE_REBOOT",
+        "FORCE_SHUTDOWN"
+      ],
+      "default": "REBOOT"
+    },
+    "StorageDeviceDriver": {
+      "type": "string",
+      "enum": [
+        "LOCAL",
+        "RDB"
+      ],
+      "default": "LOCAL"
+    },
+    "VMPowerState": {
+      "type": "string",
+      "enum": [
+        "NONE",
+        "RUNNING",
+        "SHUTDOWN",
+        "SHUTOFF",
+        "CRASHED"
+      ],
+      "default": "NONE"
+    },
+    "hyperDiskStats": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "rd_reqs": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "rd_bytes": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "rd_times": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "wr_reqs": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "wr_bytes": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "wr_times": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "alloc": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "cap": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "phy": {
+          "type": "string",
+          "format": "uint64"
+        }
+      }
+    },
+    "hyperListResponse": {
+      "type": "object",
+      "properties": {
+        "vms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hyperVM"
+          }
+        }
+      }
+    },
+    "hyperMemStats": {
+      "type": "object",
+      "properties": {
+        "majors_faults": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "minor_faults": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "unused": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "available": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "usable": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "swap_in": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "swap_out": {
+          "type": "string",
+          "format": "uint64"
+        }
+      }
+    },
+    "hyperNetStats": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "rx_bytes": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "rx_pkts": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "rx_errs": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "rx_drops": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "tx_bytes": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "tx_pkts": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "tx_errs": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "tx_drops": {
+          "type": "string",
+          "format": "uint64"
+        }
+      }
+    },
+    "hyperPowerResponse": {
+      "type": "object"
+    },
+    "hyperStatsResponse": {
+      "type": "object",
+      "properties": {
+        "stats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hyperVMStats"
+          }
+        }
+      }
+    },
+    "hyperStorageDevice": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "driver": {
+          "$ref": "#/definitions/StorageDeviceDriver"
+        },
+        "size": {
+          "type": "string",
+          "format": "int64"
+        }
+      }
+    },
+    "hyperVCPUStats": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "time": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "usage": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "hyperVM": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "template_id": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "format": "byte"
+          }
+        },
+        "placement_id": {
+          "type": "string"
+        },
+        "subnet_id": {
+          "type": "string"
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hyperStorageDevice"
+          }
+        },
+        "fw_rule_sets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "power_state": {
+          "$ref": "#/definitions/VMPowerState"
+        },
+        "power_state_last_update": {
+          "type": "string"
+        },
+        "desired_power_state": {
+          "$ref": "#/definitions/VMPowerState"
+        },
+        "desired_power_state_last_update": {
+          "type": "string"
+        }
+      }
+    },
+    "hyperVMStats": {
+      "type": "object",
+      "properties": {
+        "vcpus": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hyperVCPUStats"
+          }
+        },
+        "nets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hyperNetStats"
+          }
+        },
+        "disks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hyperDiskStats"
+          }
+        },
+        "mem": {
+          "$ref": "#/definitions/hyperMemStats"
+        }
+      }
+    }
+  }
 }

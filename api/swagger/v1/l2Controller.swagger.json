@@ -1,0 +1,56 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "l2Controller.proto",
+    "version": "version not set"
+  },
+  "schemes": [
+    "http",
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {},
+  "definitions": {
+    "l2ControllerBroadcastEndpointResponse": {
+      "type": "object",
+      "properties": {
+        "IP": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "l2ControllerLookupResponse": {
+      "type": "object",
+      "properties": {
+        "MAC": {
+          "type": "string"
+        },
+        "IP": {
+          "type": "string"
+        }
+      }
+    },
+    "l2ControllerLookupType": {
+      "type": "string",
+      "enum": [
+        "MAC",
+        "IP"
+      ],
+      "default": "MAC"
+    },
+    "l2ControllerMACIPResp": {
+      "type": "object"
+    },
+    "l2ControllerRegResponse": {
+      "type": "object"
+    }
+  }
+}

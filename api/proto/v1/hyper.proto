@@ -21,8 +21,12 @@ message VM {
 		SHUTOFF = 5;
 		CRASHED = 6;
 	}
+
 	PowerState power_state = 9;
 	string power_state_last_update = 10;
+
+	PowerState desired_power_state = 11;
+	string desired_power_state_last_update = 12;
 }
 
 message VMTemplate {
@@ -40,6 +44,100 @@ message StorageDevice {
 		LOCAL = 0;
 		RDB = 1;
 	}
+
 	Driver driver = 3;
 	int64 size = 4;
+}
+
+message StatsRequest {
+	string id = 1;
+}
+
+message VCPUStats {
+	uint32 id = 1;
+	uint32 time = 2;
+	uint32 usage = 3;
+}
+
+message MemStats {
+	uint64 majors_faults = 1;
+	uint64 minor_faults = 2;
+
+	uint64 unused = 3;
+	uint64 available = 4;
+	uint64 usable = 5;
+
+	uint64 swap_in = 6;
+	uint64 swap_out = 7;
+}
+
+message NetStats {
+	string id = 1;
+
+	uint64 rx_bytes = 2;
+	uint64 rx_pkts = 3;
+	uint64 rx_errs = 4;
+	uint64 rx_drops = 5;
+
+	uint64 tx_bytes = 6;
+	uint64 tx_pkts = 7;
+	uint64 tx_errs = 8;
+	uint64 tx_drops = 9;
+}
+
+message DiskStats {
+	string id = 1;
+
+	uint64 rd_reqs = 2;
+	uint64 rd_bytes = 3;
+	uint64 rd_times = 4;
+
+	uint64 wr_reqs = 5;
+	uint64 wr_bytes = 6;
+	uint64 wr_times = 7;
+
+	uint64 alloc = 8;
+	uint64 cap = 9;
+	uint64 phy = 10;
+}
+
+message VMStats {
+	repeated VCPUStats vcpus = 1;
+	repeated NetStats nets = 2;
+	repeated DiskStats disks = 3;
+	MemStats mem = 4;
+}
+
+message StatsResponse {
+	repeated VMStats stats = 1;
+}
+
+message ListRequest {
+	string id = 1;
+}
+
+message ListResponse {
+	repeated VM vms = 1;
+}
+
+message PowerRequest {
+	enum PowerType {
+		REBOOT = 0;
+		SHUTDOWN = 1;
+		FORCE_REBOOT = 2;
+		FORCE_SHUTDOWN = 3;
+	}
+
+	string id = 1;
+	PowerType type = 2;
+}
+
+message PowerResponse {
+
+}
+
+service HyperService {
+	rpc Stats(StatsRequest) returns (StatsResponse) {};
+	rpc List(ListRequest) returns (ListResponse) {};
+	rpc Power(PowerRequest) returns (PowerResponse) {};
 }

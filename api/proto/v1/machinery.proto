@@ -32,6 +32,10 @@ message Placement {
 	string device_id = 5;
 }
 
+message PlacementsRequest {
+	string id = 1;
+}
+
 message PlacementsResponse {
 	repeated Placement placements = 1;
 	repeated DeviceType types = 2;
@@ -47,6 +51,6 @@ message MachinesResponse {
 
 service MachineryService {
 	rpc Ping(Machine) returns (PingResponse) {};
-	rpc Placements(Machine) returns (PlacementsResponse) {};
+	rpc Placements(PlacementsRequest) returns (PlacementsResponse) {};
 	rpc Machines(MachinesRequest) returns (MachinesResponse) {};
 }

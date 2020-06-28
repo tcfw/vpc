@@ -1,6 +1,6 @@
 #!/bin/bash
 
-services='machinery vpc l2 hyper'
+services='machinery vpc l2 hyper l2Controller'
 
 for service in ${services}
 do
