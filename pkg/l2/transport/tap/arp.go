@@ -106,5 +106,7 @@ func (s *Listener) buildARPResponse(vlanID uint16, arpRequest *layers.ARP, mac n
 		// vlan,
 		arp)
 
-	return buf.Bytes(), err
+	//Fix eth padding
+	pack := buf.Bytes()[:42]
+	return pack, err
 }

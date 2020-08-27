@@ -71,6 +71,8 @@ func (xdpt *Tap) Write(p []byte) (int, error) {
 	//Mark
 	xdpt.xsk.Complete(xdpt.xsk.NumCompleted())
 
+	// log.Printf("TPO: % X", p)
+
 	return n, nil
 }
 
@@ -104,6 +106,8 @@ func (xdpt *Tap) BatchWrite(ps []BatchDesc) (int, error) {
 	}
 
 	xdpt.xsk.Complete(xdpt.xsk.NumCompleted())
+
+	// log.Printf("TPBO: %d", n)
 
 	return n, nil
 }

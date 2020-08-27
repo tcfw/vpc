@@ -1,8 +1,7 @@
 syntax="proto3";
 
 package vpc.machinery;
-
-option go_package = "machinery";
+option go_package = ".;machinery";
 
 message Machine {
 	string id = 1;
@@ -11,29 +10,33 @@ message Machine {
 		ORCHEST = 0;
 		COMPUTE = 1;
 		NETWORK = 2;
+		STORAGE = 3;
 	}
 
 	repeated Capability capabilities = 2;
 	string last_checkin = 3;
-	string region = 4;
+	string availability_zone = 4;
+
+	map<string, string> versions = 5;
+	map<string, int32> limits = 6;
 }
 
 enum DeviceType {
 	ROUTER = 0;
 	VM = 1;
+	BLOCK = 2;
 }
 
 message Placement {
 	string id = 1;
 	string machine_id = 2;
-	int32 vpc_id = 3;
 	
 	DeviceType device_type = 4;
 	string device_id = 5;
 }
 
 message PlacementsRequest {
-	string id = 1;
+	string machine_id = 1;
 }
 
 message PlacementsResponse {
@@ -49,8 +52,22 @@ message MachinesResponse {
 	repeated Machine machines = 1;
 }
 
+enum PlacementAction {
+	ASSIGN = 0;
+	REPLACE = 1;
+	UNASSIGN = 2;
+}
+
+message PlaceRequest {
+	PlacementAction action = 1;
+	Placement placement = 2;
+}
+
+message PlaceResponse {}
+
 service MachineryService {
 	rpc Ping(Machine) returns (PingResponse) {};
 	rpc Placements(PlacementsRequest) returns (PlacementsResponse) {};
 	rpc Machines(MachinesRequest) returns (MachinesResponse) {};
+	rpc Place(PlaceRequest) returns (PlaceResponse) {};
 }

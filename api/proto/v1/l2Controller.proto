@@ -1,8 +1,7 @@
 syntax="proto3";
 
 package vpc.l2Controller;
-
-option go_package = "l2Controller";
+option go_package = ".;l2Controller";
 
 message MACIPRequest {
 	uint32 VNID = 1;

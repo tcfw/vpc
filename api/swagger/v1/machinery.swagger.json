@@ -21,7 +21,8 @@
       "enum": [
         "ORCHEST",
         "COMPUTE",
-        "NETWORK"
+        "NETWORK",
+        "STORAGE"
       ],
       "default": "ORCHEST"
     },
@@ -29,7 +30,8 @@
       "type": "string",
       "enum": [
         "ROUTER",
-        "VM"
+        "VM",
+        "BLOCK"
       ],
       "default": "ROUTER"
     },
@@ -48,8 +50,21 @@
         "last_checkin": {
           "type": "string"
         },
-        "region": {
+        "availability_zone": {
           "type": "string"
+        },
+        "versions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "int32"
+          }
         }
       }
     },
@@ -67,6 +82,9 @@
     "machineryPingResponse": {
       "type": "object"
     },
+    "machineryPlaceResponse": {
+      "type": "object"
+    },
     "machineryPlacement": {
       "type": "object",
       "properties": {
@@ -76,10 +94,6 @@
         "machine_id": {
           "type": "string"
         },
-        "vpc_id": {
-          "type": "integer",
-          "format": "int32"
-        },
         "device_type": {
           "$ref": "#/definitions/machineryDeviceType"
         },
@@ -87,6 +101,15 @@
           "type": "string"
         }
       }
+    },
+    "machineryPlacementAction": {
+      "type": "string",
+      "enum": [
+        "ASSIGN",
+        "REPLACE",
+        "UNASSIGN"
+      ],
+      "default": "ASSIGN"
     },
     "machineryPlacementsResponse": {
       "type": "object",

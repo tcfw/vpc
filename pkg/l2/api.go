@@ -64,6 +64,7 @@ func Serve(port uint) {
 
 //Server l2 API server
 type Server struct {
+	l2API.UnimplementedL2ServiceServer
 	m         sync.Mutex
 	watches   []chan l2API.StackChange
 	stacks    map[int32]*Stack

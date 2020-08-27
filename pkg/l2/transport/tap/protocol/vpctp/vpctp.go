@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/spf13/viper"
+	"github.com/tatsushid/go-fastping"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
@@ -177,7 +179,7 @@ func (vtp *VPCTP) monitorFIB() {
 		vtp.fibCMu.Lock()
 		cacheK := string(update.Neigh.IP.To16())
 		if update.Type == unix.RTM_NEWNEIGH && (update.Neigh.IP.IsLinkLocalUnicast() || update.Neigh.IP.IsGlobalUnicast()) {
-			// log.Printf("FIB-U: %+v", update.Neigh)
+			log.Printf("FIB-U: %+v", update.Neigh)
 			vtp.fibCache[cacheK] = update.Neigh
 		} else if _, ok := vtp.fibCache[cacheK]; update.Type == unix.RTM_DELNEIGH && ok {
 			delete(vtp.fibCache, cacheK)
@@ -243,6 +245,8 @@ func (vtp *VPCTP) Send(ps []protocol.Packet, addr net.IP) (int, error) {
 //Also starts up the backup protocol handler
 func (vtp *VPCTP) listen() {
 	go vtp.listenPC()
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	pks := make([]protocol.Packet, 64)
 	var i int
@@ -493,8 +497,10 @@ func (vtp *VPCTP) arp(addr net.IP) (net.HardwareAddr, error) {
 		return nil, fmt.Errorf("failed to construct arp request: %s", err)
 	}
 
-	if _, err = vtp.xsk.Write(packet); err != nil {
-		return nil, fmt.Errorf("failed to send arp: %s", err)
+	if packet != nil {
+		if _, err = vtp.xsk.Write(packet); err != nil {
+			return nil, fmt.Errorf("failed to send arp: %s", err)
+		}
 	}
 
 	select {
@@ -508,35 +514,61 @@ func (vtp *VPCTP) arp(addr net.IP) (net.HardwareAddr, error) {
 }
 
 func (vtp *VPCTP) arpRequest(addr net.IP) ([]byte, error) {
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
+	// buf := gopacket.NewSerializeBuffer()
+	// opts := gopacket.SerializeOptions{
+	// 	FixLengths:       true,
+	// 	ComputeChecksums: true,
+	// }
+
+	// err := gopacket.SerializeLayers(buf, opts,
+	// 	&layers.Ethernet{
+	// 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+	// 		SrcMAC:       vtp.hwaddr,
+	// 		EthernetType: layers.EthernetTypeARP,
+	// 	},
+	// 	&layers.ARP{
+	// 		AddrType:          layers.LinkTypeEthernet,
+	// 		Protocol:          layers.EthernetTypeIPv4,
+	// 		HwAddressSize:     6,
+	// 		ProtAddressSize:   4,
+	// 		Operation:         layers.ARPRequest,
+	// 		SourceHwAddress:   []byte(vtp.hwaddr),
+	// 		SourceProtAddress: []byte(vtp.listenAddr.To4()),
+	// 		DstHwAddress:      make([]byte, len(vtp.hwaddr)),
+	// 		DstProtAddress:    []byte(addr.To4()),
+	// 	},
+	// )
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// return buf.Bytes()[:42], nil
+
+	//ARP responses aren't picked up by the kernel, so we'll trigger a ICMP ping instead
+	//and hope the OS resolved the IP itself
+	p := fastping.NewPinger()
+
+	ra := &net.IPAddr{IP: addr}
+	p.AddIPAddr(ra)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	p.OnRecv = func(addr *net.IPAddr, rtt time.Duration) {
+		wg.Done()
+	}
+	p.OnIdle = func() {
+		wg.Done()
 	}
 
-	err := gopacket.SerializeLayers(buf, opts,
-		&layers.Ethernet{
-			DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-			SrcMAC:       vtp.hwaddr,
-			EthernetType: layers.EthernetTypeARP,
-		},
-		&layers.ARP{
-			AddrType:          layers.LinkTypeEthernet,
-			Protocol:          layers.EthernetTypeIPv4,
-			HwAddressSize:     6,
-			ProtAddressSize:   4,
-			Operation:         layers.ARPRequest,
-			SourceHwAddress:   []byte(vtp.hwaddr),
-			SourceProtAddress: []byte(vtp.listenAddr.To4()),
-			DstHwAddress:      make([]byte, len(vtp.hwaddr)),
-			DstProtAddress:    []byte(addr.To4()),
-		},
-	)
+	err := p.Run()
 	if err != nil {
 		return nil, err
 	}
 
-	return buf.Bytes(), nil
+	wg.Wait()
+
+	return nil, err
 }
 
 func (vtp *VPCTP) neighborSolicitation(addr net.IP) ([]byte, error) {

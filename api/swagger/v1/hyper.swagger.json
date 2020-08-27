@@ -16,7 +16,7 @@
   ],
   "paths": {},
   "definitions": {
-    "PowerRequestPowerType": {
+    "PowerRequestForcePowerType": {
       "type": "string",
       "enum": [
         "REBOOT",
@@ -33,17 +33,6 @@
         "RDB"
       ],
       "default": "LOCAL"
-    },
-    "VMPowerState": {
-      "type": "string",
-      "enum": [
-        "NONE",
-        "RUNNING",
-        "SHUTDOWN",
-        "SHUTOFF",
-        "CRASHED"
-      ],
-      "default": "NONE"
     },
     "hyperDiskStats": {
       "type": "object",
@@ -130,6 +119,10 @@
         "swap_out": {
           "type": "string",
           "format": "uint64"
+        },
+        "last_update": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
@@ -176,6 +169,18 @@
     "hyperPowerResponse": {
       "type": "object"
     },
+    "hyperPowerState": {
+      "type": "string",
+      "enum": [
+        "NONE",
+        "RUNNING",
+        "SHUTDOWN",
+        "SHUTOFF",
+        "CRASHED",
+        "MIGRATING"
+      ],
+      "default": "NONE"
+    },
     "hyperStatsResponse": {
       "type": "object",
       "properties": {
@@ -213,23 +218,27 @@
           "format": "int64"
         },
         "time": {
-          "type": "integer",
-          "format": "int64"
+          "type": "string",
+          "format": "uint64"
         },
         "usage": {
-          "type": "integer",
-          "format": "int64"
+          "type": "number",
+          "format": "float"
         }
       }
     },
     "hyperVM": {
       "type": "object",
       "properties": {
+        "account": {
+          "type": "integer",
+          "format": "int32"
+        },
         "id": {
           "type": "string"
         },
-        "template_id": {
-          "type": "string"
+        "status": {
+          "$ref": "#/definitions/hyperVMStatus"
         },
         "metadata": {
           "type": "object",
@@ -238,7 +247,13 @@
             "format": "byte"
           }
         },
+        "template_id": {
+          "type": "string"
+        },
         "placement_id": {
+          "type": "string"
+        },
+        "hyper_id": {
           "type": "string"
         },
         "subnet_id": {
@@ -263,16 +278,38 @@
           }
         },
         "power_state": {
-          "$ref": "#/definitions/VMPowerState"
+          "$ref": "#/definitions/hyperPowerState"
         },
         "power_state_last_update": {
           "type": "string"
         },
         "desired_power_state": {
-          "$ref": "#/definitions/VMPowerState"
+          "$ref": "#/definitions/hyperPowerState"
         },
         "desired_power_state_last_update": {
           "type": "string"
+        },
+        "ssh_key_ref": {
+          "type": "string"
+        },
+        "user_data": {
+          "type": "string",
+          "format": "byte"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "availability_area": {
+          "type": "string"
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hyperVolumeAttachment"
+          }
         }
       }
     },
@@ -299,6 +336,29 @@
         },
         "mem": {
           "$ref": "#/definitions/hyperMemStats"
+        }
+      }
+    },
+    "hyperVMStatus": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "CREATING",
+        "AVAILABLE",
+        "DELETING",
+        "DELETED",
+        "ERROR"
+      ],
+      "default": "PENDING"
+    },
+    "hyperVolumeAttachment": {
+      "type": "object",
+      "properties": {
+        "volume": {
+          "type": "string"
+        },
+        "dev": {
+          "type": "string"
         }
       }
     }

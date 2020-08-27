@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"log"
+	"runtime"
 	"sync"
 
 	"github.com/google/gopacket"
@@ -43,31 +44,31 @@ type Tap struct {
 
 //NewTap creates a tap interface on the specified bridge
 func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error) {
-	iface := &netlink.Tuntap{
-		Mode: netlink.TUNTAP_MODE_TAP,
-		LinkAttrs: netlink.LinkAttrs{
-			Name: fmt.Sprintf(vtepPattern, vnid),
-			MTU:  mtu,
-		},
-		Flags:  netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
-		Queues: tapQueues,
-	}
-	// iface := &netlink.Veth{
+	// iface := &netlink.Tuntap{
+	// 	Mode: netlink.TUNTAP_MODE_TAP,
 	// 	LinkAttrs: netlink.LinkAttrs{
 	// 		Name: fmt.Sprintf(vtepPattern, vnid),
 	// 		MTU:  mtu,
 	// 	},
-	// 	PeerName: fmt.Sprintf(vtepPattern+"-p", vnid),
+	// 	Flags:  netlink.TUNTAP_MULTI_QUEUE_DEFAULTS,
+	// 	Queues: tapQueues,
 	// }
+	iface := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{
+			Name: fmt.Sprintf(vtepPattern, vnid),
+			MTU:  mtu,
+		},
+		PeerName: fmt.Sprintf(vtepPattern+"-p", vnid),
+	}
 
 	if err := netlink.LinkAdd(iface); err != nil {
 		return nil, fmt.Errorf("failed to add link: %s", err)
 	}
 
-	// ifacePeer, err := netlink.LinkByName(iface.PeerName)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	ifacePeer, err := netlink.LinkByName(iface.PeerName)
+	if err != nil {
+		return nil, err
+	}
 
 	if br != nil {
 		if err := netlink.LinkSetMaster(iface, br); err != nil {
@@ -83,7 +84,7 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 		return nil, fmt.Errorf("failed to bring up tap: %s", err)
 	}
 
-	// netlink.LinkSetUp(ifacePeer)
+	netlink.LinkSetUp(ifacePeer)
 
 	tapHandler := &Tap{
 		vnid:    vnid,
@@ -95,12 +96,12 @@ func NewTap(s *Listener, vnid uint32, mtu int, br *netlink.Bridge) (*Tap, error)
 
 	//Create i queues through multiqueue tap option
 	for i := 0; i < tapQueues; i++ {
-		ifce, err := tapHandler.openDev(iface.Name)
-		if err != nil {
-			log.Fatal(err)
-		}
-		tapHandler.tuntaps = append(tapHandler.tuntaps, ifce)
-		xdp, err := xdp.NewTap(iface, i, nil)
+		// ifce, err := tapHandler.openDev(iface.Name)
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+		// tapHandler.tuntaps = append(tapHandler.tuntaps, ifce)
+		xdp, err := xdp.NewTap(ifacePeer, i, nil)
 		if err != nil {
 			netlink.LinkDel(iface)
 			return nil, err
@@ -126,9 +127,9 @@ func (v *Tap) Start() {
 		go v.handleBatchXDP(&wg, xdp)
 	}
 
-	for _, tap := range v.tuntaps {
-		go v.handleTapPipe(&wg, tap)
-	}
+	// for _, tap := range v.tuntaps {
+	// 	go v.handleTapPipe(&wg, tap)
+	// }
 
 	wg.Wait()
 }
@@ -191,6 +192,9 @@ func (v *Tap) handleXDP(wg *sync.WaitGroup, xdpt *xdp.Tap) {
 }
 
 func (v *Tap) handleBatchXDP(wg *sync.WaitGroup, xdpt *xdp.Tap) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	wg.Add(1)
 	defer wg.Done()
 

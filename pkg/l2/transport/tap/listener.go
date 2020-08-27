@@ -11,9 +11,9 @@ import (
 	"github.com/songgao/packets/ethernet"
 	"github.com/tcfw/vpc/pkg/l2/controller"
 
-	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
+	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vxlan"
 	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/quic"
-	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vpctp"
+	// "github.com/tcfw/vpc/pkg/l2/transport/tap/protocol/vpctp"
 
 	"github.com/tcfw/vpc/pkg/l2/transport/tap/protocol"
 
@@ -42,7 +42,7 @@ func NewListener() (*Listener, error) {
 		FDB:    NewFDB(),
 		vlans:  map[uint16]int{},
 		misses: map[uint32]chan transport.ForwardingMiss{},
-		conn:   vpctp.NewHandler(),
+		conn:   vxlan.NewHandler(),
 	}
 
 	return lis, nil

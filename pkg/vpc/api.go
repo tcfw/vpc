@@ -43,6 +43,8 @@ func NewServer() (*Server, error) {
 
 //Server vpc API server
 type Server struct {
+	vpcAPI.UnimplementedVPCServiceServer
+
 	m  sync.Mutex
 	db *sql.DB
 }

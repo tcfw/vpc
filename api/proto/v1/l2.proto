@@ -1,8 +1,7 @@
 syntax="proto3";
 
 package vpc.l2;
-
-option go_package = "l2";
+option go_package = ".;l2";
 
 message StackRequest {
 	int32 vpc_id = 1;

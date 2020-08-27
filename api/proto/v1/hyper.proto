@@ -1,32 +1,56 @@
 syntax="proto3";
 
 package vpc.hyper;
-option go_package = "hyper";
+option go_package = ".;hyper";
+
+enum VMStatus {
+	PENDING = 0;
+	CREATING = 1;
+	AVAILABLE = 2;
+	DELETING = 3;
+	DELETED = 4;
+
+	ERROR = 99;
+}
 
 message VM {
-	string id = 1;
-	string template_id = 2;
-	map<string, bytes> metadata = 3;
-	string placement_id = 4;
-	string subnet_id = 5;
+	int32 account = 1;
+	string id = 2;
+	VMStatus status = 17;
+	map<string, bytes> metadata = 4;
 
-	repeated StorageDevice storage = 6;
-	repeated string fw_rule_sets = 7;
-	repeated string nics = 8;
+	string template_id = 3;
+	string placement_id = 5;
+	string hyper_id = 6;
+	string subnet_id = 7;
+	
+	repeated StorageDevice storage = 8;
+	repeated string fw_rule_sets = 9;
+	repeated string nics = 10;
+	
+	PowerState power_state = 11;
+	string power_state_last_update = 12;
+	
+	PowerState desired_power_state = 13;
+	string desired_power_state_last_update = 14;
 
-	enum PowerState {
-		NONE = 0;
-		RUNNING = 1;
-		SHUTDOWN = 4;
-		SHUTOFF = 5;
-		CRASHED = 6;
-	}
+	string ssh_key_ref = 15;
+	bytes user_data = 16;
 
-	PowerState power_state = 9;
-	string power_state_last_update = 10;
+	string created_at = 18;
+	string updated_at = 19;
+	string availability_area = 20;
 
-	PowerState desired_power_state = 11;
-	string desired_power_state_last_update = 12;
+	repeated VolumeAttachment volumes = 21;
+}
+
+enum PowerState {
+	NONE = 0;
+	RUNNING = 1;
+	SHUTDOWN = 4;
+	SHUTOFF = 5;
+	CRASHED = 6;
+	MIGRATING = 7;
 }
 
 message VMTemplate {
@@ -34,6 +58,11 @@ message VMTemplate {
 	int32 vcpu = 2;
 	int64 ram = 3;
 	string libvirt_xml = 4;
+}
+
+message VolumeAttachment {
+	string volume = 1;
+	string dev = 2;
 }
 
 message StorageDevice {
@@ -55,8 +84,8 @@ message StatsRequest {
 
 message VCPUStats {
 	uint32 id = 1;
-	uint32 time = 2;
-	uint32 usage = 3;
+	uint64 time = 2;
+	float usage = 3;
 }
 
 message MemStats {
@@ -69,6 +98,8 @@ message MemStats {
 
 	uint64 swap_in = 6;
 	uint64 swap_out = 7;
+
+	uint64 last_update = 8;
 }
 
 message NetStats {
@@ -121,7 +152,7 @@ message ListResponse {
 }
 
 message PowerRequest {
-	enum PowerType {
+	enum ForcePowerType {
 		REBOOT = 0;
 		SHUTDOWN = 1;
 		FORCE_REBOOT = 2;
@@ -129,12 +160,10 @@ message PowerRequest {
 	}
 
 	string id = 1;
-	PowerType type = 2;
+	ForcePowerType type = 2;
 }
 
-message PowerResponse {
-
-}
+message PowerResponse {}
 
 service HyperService {
 	rpc Stats(StatsRequest) returns (StatsResponse) {};

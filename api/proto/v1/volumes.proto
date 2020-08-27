@@ -1,0 +1,99 @@
+syntax="proto3";
+
+package vpc.volumes;
+option go_package = ".;volumes";
+
+enum VolumeStatus {
+	PENDING = 0;
+	CREATING = 1;
+	AVAILABLE = 2;
+	INUSE = 3;
+	BACKINGUP = 4;
+	RESTORING = 5;
+	RESIZING = 6;
+	DELETING = 7;
+	DELETED = 8;
+
+	ERROR = 99;
+}
+
+message Volume {
+	int32 account = 1;
+	string id = 2;
+	VolumeStatus status = 3;
+	map<string, bytes> metadata = 4;
+	string created_at = 5;
+	string updated_at = 6;
+
+	int64 size = 7;
+	string store = 8;
+	string availability_area = 9;
+}
+
+message Snapshot {
+	string id = 1;
+	string volume = 2;
+	VolumeStatus status = 3;
+	map<string, bytes> metadata = 4;
+	string created_at = 5;
+	string updated_at = 6;
+
+	int64 size = 7;
+	string store = 8;
+	string availability_area = 9;
+}
+
+message PeerNegotiate {
+	string IAm = 1;
+	string YouAre = 2;
+}
+
+message RaftRPC {
+	string volume = 1;
+	int32 type = 2;
+	bytes command = 3;
+	string error = 4;
+}
+
+message PeerPing {
+	int64 ts = 1;
+}
+
+message BlockCommandRequest {
+	enum Cmd {
+		WRITE = 0;
+		READ = 1;
+		ZERO = 2;
+	}
+	
+	string volume = 1;
+	Cmd cmd = 2;
+	int64 offset = 3;
+	int32 length = 4;
+	bytes data = 5;
+}
+
+message BlockCommandResponse {
+	string volume = 1;
+	string retryAt = 2; //peer ID to retry to request at - i.e. peer not leader
+	bytes data = 3;
+	string error = 4;
+}
+
+message RPCMetadata {
+	bool leaderOnly = 1; //to prevent stale reads if no caching on client side - all writes must still go to leader
+	bool allowForwarding = 2;
+	int32 TTL = 3;
+}
+
+message PeerRPC {
+	RPCMetadata metadata = 1;
+	oneof RPC {
+		RaftRPC RaftRPC = 2;
+		PeerPing PeerPing = 3;
+		BlockCommandRequest BlockCommand = 4;
+		BlockCommandResponse BlockCommandResponse = 5;
+	}
+	reserved 6 to 100; //future RPCs
+	bool async = 101;
+}

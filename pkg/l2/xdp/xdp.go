@@ -446,23 +446,23 @@ func NewSocket(Ifindex int, QueueID int, ebpfProg ProgRef) (xsk *Socket, err err
 			Name: "xsk_ebpf",
 			Type: ebpf.XDP,
 			Instructions: asm.Instructions{
-				{OpCode: 97, Dst: 1, Src: 1, Offset: 16},                                      // 0: code: 97 dst_reg: 1 src_reg: 1 off: 16 imm: 0   // 0
-				{OpCode: 99, Dst: 10, Src: 1, Offset: -4},                                     // 1: code: 99 dst_reg: 10 src_reg: 1 off: -4 imm: 0  // 1
-				{OpCode: 191, Dst: 2, Src: 10},                                                // 2: code: 191 dst_reg: 2 src_reg: 10 off: 0 imm: 0  // 2
-				{OpCode: 7, Dst: 2, Src: 0, Offset: 0, Constant: -4},                          // 3: code: 7 dst_reg: 2 src_reg: 0 off: 0 imm: -4    // 3
-				{OpCode: 24, Dst: 1, Src: 1, Offset: 0, Constant: int64(xsk.qidconfMap.FD())}, // 4: code: 24 dst_reg: 1 src_reg: 1 off: 0 imm: 4    // 4 XXX use qidconfMap.FD as IMM
-				{OpCode: 133, Dst: 0, Src: 0, Constant: 1},                                    // 6: code: 133 dst_reg: 0 src_reg: 0 off: 0 imm: 1   // 5
-				{OpCode: 191, Dst: 1, Src: 0},                                                 // 7: code: 191 dst_reg: 1 src_reg: 0 off: 0 imm: 0   // 6
-				{OpCode: 180, Dst: 0, Src: 0},                                                 // 8: code: 180 dst_reg: 0 src_reg: 0 off: 0 imm: 0   // 7
-				{OpCode: 21, Dst: 1, Src: 0, Offset: 8},                                       // 9: code: 21 dst_reg: 1 src_reg: 0 off: 8 imm: 0    // 8
-				{OpCode: 180, Dst: 0, Src: 0, Constant: 2},                                    // 10: code: 180 dst_reg: 0 src_reg: 0 off: 0 imm: 2  // 9
-				{OpCode: 97, Dst: 1, Src: 1},                                                  // 11: code: 97 dst_reg: 1 src_reg: 1 off: 0 imm: 0   // 10
-				{OpCode: 21, Dst: 1, Offset: 5},                                               // 12: code: 21 dst_reg: 1 src_reg: 0 off: 5 imm: 0   // 11
-				{OpCode: 24, Dst: 1, Src: 1, Constant: int64(xsk.xsksMap.FD())},               // 13: code: 24 dst_reg: 1 src_reg: 1 off: 0 imm: 5   // 12 XXX use xsksMap.FD as IMM
-				{OpCode: 97, Dst: 2, Src: 10, Offset: -4},                                     // 15: code: 97 dst_reg: 2 src_reg: 10 off: -4 imm: 0 // 13
-				{OpCode: 180, Dst: 3},                                                         // 16: code: 180 dst_reg: 3 src_reg: 0 off: 0 imm: 0  // 14
-				{OpCode: 133, Constant: 51},                                                   // 17: code: 133 dst_reg: 0 src_reg: 0 off: 0 imm: 51 // 15
-				{OpCode: 149},                                                                 // 18: code: 149 dst_reg: 0 src_reg: 0 off: 0 imm: 0  // 16
+				{OpCode: 97, Dst: 2, Src: 1, Offset: 16}, // 0: code: 97 dst_reg: 1 src_reg: 1 off: 16 imm: 0   // 0
+				// {OpCode: 99, Dst: 10, Src: 1, Offset: -4},                                     // 1: code: 99 dst_reg: 10 src_reg: 1 off: -4 imm: 0  // 1
+				// {OpCode: 191, Dst: 2, Src: 10},                                                // 2: code: 191 dst_reg: 2 src_reg: 10 off: 0 imm: 0  // 2
+				// {OpCode: 7, Dst: 2, Src: 0, Offset: 0, Constant: -4},                          // 3: code: 7 dst_reg: 2 src_reg: 0 off: 0 imm: -4    // 3
+				// {OpCode: 24, Dst: 1, Src: 1, Offset: 0, Constant: int64(xsk.qidconfMap.FD())}, // 4: code: 24 dst_reg: 1 src_reg: 1 off: 0 imm: 4    // 4 XXX use qidconfMap.FD as IMM
+				// {OpCode: 133, Dst: 0, Src: 0, Constant: 1},                                    // 6: code: 133 dst_reg: 0 src_reg: 0 off: 0 imm: 1   // 5
+				// {OpCode: 191, Dst: 1, Src: 0},                                                 // 7: code: 191 dst_reg: 1 src_reg: 0 off: 0 imm: 0   // 6
+				// {OpCode: 180, Dst: 0, Src: 0},                                                 // 8: code: 180 dst_reg: 0 src_reg: 0 off: 0 imm: 0   // 7
+				// {OpCode: 21, Dst: 1, Src: 0, Offset: 8},                                       // 9: code: 21 dst_reg: 1 src_reg: 0 off: 8 imm: 0    // 8
+				// {OpCode: 180, Dst: 0, Src: 0, Constant: 2},                                    // 10: code: 180 dst_reg: 0 src_reg: 0 off: 0 imm: 2  // 9
+				// {OpCode: 97, Dst: 1, Src: 1},                                                  // 11: code: 97 dst_reg: 1 src_reg: 1 off: 0 imm: 0   // 10
+				// {OpCode: 21, Dst: 1, Offset: 5},                                               // 12: code: 21 dst_reg: 1 src_reg: 0 off: 5 imm: 0   // 11
+				{OpCode: 24, Dst: 1, Src: 1, Constant: int64(xsk.xsksMap.FD())}, // 13: code: 24 dst_reg: 1 src_reg: 1 off: 0 imm: 5   // 12 XXX use xsksMap.FD as IMM
+				// {OpCode: 97, Dst: 2, Src: 10, Offset: -4},                       // 15: code: 97 dst_reg: 2 src_reg: 10 off: -4 imm: 0 // 13
+				{OpCode: 180, Dst: 3},       // 16: code: 180 dst_reg: 3 src_reg: 0 off: 0 imm: 0  // 14
+				{OpCode: 133, Constant: 51}, // 17: code: 133 dst_reg: 0 src_reg: 0 off: 0 imm: 51 // 15
+				{OpCode: 149},               // 18: code: 149 dst_reg: 0 src_reg: 0 off: 0 imm: 0  // 16
 			},
 			License:       "LGPL-2.1 or BSD-2-Clause",
 			KernelVersion: 0,
