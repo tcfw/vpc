@@ -122,7 +122,7 @@ func (xdpt *Tap) Read(p []byte) (int, error) {
 			if err != nil {
 				return 0, err
 			}
-			//Check if poll was for recieving
+			//Check if poll was for receiving
 			if numrecv != 0 {
 				xdpt.recvWaiting.Store(numrecv - 1)
 				break

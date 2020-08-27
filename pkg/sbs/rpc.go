@@ -331,7 +331,7 @@ func (s *Server) handleBlockCommand(p *Peer, stream quic.Stream, rpc *volumesAPI
 
 		peer, err := s.discoverPeer(leader)
 		if err != nil {
-			return fmt.Errorf("failed to foward to leader - not in peer store")
+			return fmt.Errorf("failed to forward to leader - not in peer store")
 		}
 
 		resp, err := s.SendReqViaChannel(peer, "forward", msg)
@@ -370,7 +370,7 @@ func (s *Server) handleBlockCommand(p *Peer, stream quic.Stream, rpc *volumesAPI
 
 		logCmdBytes, _ := logCmd.Encode()
 
-		apply := vol.Raft.Apply(logCmdBytes , 20*time.Second)
+		apply := vol.Raft.Apply(logCmdBytes, 20*time.Second)
 		err := apply.Error()
 		if err != nil {
 			s.SendMsg(stream, s.rpcReq(&volumesAPI.BlockCommandResponse{Volume: vol.ID(), Error: err.Error()}))

@@ -273,7 +273,7 @@ func (s *Server) negotiate(sess quic.Session, initiator bool) error {
 
 	select {
 	case <-ctx.Done():
-		s.log.WithError(ctx.Err()).Debug("negotation timeout")
+		s.log.WithError(ctx.Err()).Debug("negotiation timeout")
 		return ctx.Err()
 	case err := <-errCh:
 		s.log.WithError(err).Warn("negotiation failed")

@@ -28,9 +28,9 @@ func (s *Server) BlockStoreStats() (*BlockStoreStats, error) {
 		stats.Used += volSize
 	}
 
-	avilable, err := s.blockStoreAvailability()
+	available, err := s.blockStoreAvailability()
 	if err == nil {
-		stats.Available = avilable
+		stats.Available = available
 	}
 
 	return stats, nil
@@ -52,9 +52,9 @@ func (s *Server) BlockVolumeStats(vol *Volume) (*BlockStoreStats, error) {
 	stats := &BlockStoreStats{}
 
 	stats.Allocated = uint64(vol.Size() * VolDescSizeMultiplier)
-	avilable, err := s.blockStoreAvailability()
+	available, err := s.blockStoreAvailability()
 	if err == nil {
-		stats.Available = avilable
+		stats.Available = available
 	}
 	used, err := vol.Blocks.SizeOnDisk()
 	if err != nil {

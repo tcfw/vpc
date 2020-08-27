@@ -328,7 +328,7 @@ func BenchmarkWriteApply(b *testing.B) {
 		}
 	})
 
-	b.Run("parrallel-apply", func(b *testing.B) {
+	b.Run("parallel-apply", func(b *testing.B) {
 		b.SetBytes(int64(bcmd.Length))
 		b.RunParallel(func(b *testing.PB) {
 			for b.Next() {

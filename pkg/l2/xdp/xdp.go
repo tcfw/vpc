@@ -81,6 +81,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+	"gopkg.in/src-d/go-log.v1"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
@@ -738,7 +739,7 @@ func (xsk *Socket) Close() error {
 
 	if xsk.umem != nil {
 		if err := syscall.Munmap(xsk.umem); err != nil {
-			allErrors = append(allErrors, fmt.Errorf("failed to unmap the UMEM: %v", err))
+			log.Errorf(err, "failed to unmap the UMEM")
 		}
 		xsk.umem = nil
 	}
