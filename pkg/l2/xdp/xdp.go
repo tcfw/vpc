@@ -81,7 +81,6 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
-	"gopkg.in/src-d/go-log.v1"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
@@ -675,42 +674,41 @@ func (xsk *Socket) GetFrame(d unix.XDPDesc) []byte {
 
 // Close closes and frees the resources allocated by the Socket.
 func (xsk *Socket) Close() error {
-	allErrors := []error{}
 	var err error
 
 	link, err := netlink.LinkByIndex(xsk.ifindex)
 	if err != nil {
-		allErrors = append(allErrors, err)
+		return err
 	}
 
 	if err = netlink.LinkSetXdpFd(link, -1); err != nil {
-		allErrors = append(allErrors, fmt.Errorf("failed to remove XDP program from interface: %v", err))
+		return fmt.Errorf("failed to remove XDP program from interface: %v", err)
 	}
 
 	if xsk.xsksMap != nil {
 		if err = xsk.xsksMap.Close(); err != nil {
-			allErrors = append(allErrors, fmt.Errorf("failed to close xsksMap: %v", err))
+			return fmt.Errorf("failed to close xsksMap: %v", err)
 		}
 		xsk.xsksMap = nil
 	}
 
 	if xsk.qidconfMap != nil {
 		if err = xsk.qidconfMap.Close(); err != nil {
-			allErrors = append(allErrors, fmt.Errorf("failed to close qidconfMap: %v", err))
+			return fmt.Errorf("failed to close qidconfMap: %v", err)
 		}
 		xsk.qidconfMap = nil
 	}
 
 	if xsk.program != nil {
 		if err = xsk.program.Close(); err != nil {
-			allErrors = append(allErrors, fmt.Errorf("failed to close XDP program: %v", err))
+			return fmt.Errorf("failed to close XDP program: %s", err)
 		}
 		xsk.program = nil
 	}
 
 	if xsk.fd != -1 {
 		if err = unix.Close(xsk.fd); err != nil {
-			allErrors = append(allErrors, fmt.Errorf("failed to close XDP socket: %v", err))
+			return fmt.Errorf("failed to close XDP socket: %s", err)
 		}
 		xsk.fd = -1
 
@@ -739,7 +737,7 @@ func (xsk *Socket) Close() error {
 
 	if xsk.umem != nil {
 		if err := syscall.Munmap(xsk.umem); err != nil {
-			log.Errorf(err, "failed to unmap the UMEM")
+			return fmt.Errorf("failed to unmap the UMEM: %s", err)
 		}
 		xsk.umem = nil
 	}
