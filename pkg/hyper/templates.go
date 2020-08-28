@@ -8,6 +8,7 @@ import (
 	hyperAPI "github.com/tcfw/vpc/pkg/api/v1/hyper"
 )
 
+//GetTemplate converts the VM desc template to a DomainDesc struct
 func GetTemplate(vm *hyperAPI.VM) (*DomainDesc, error) {
 	if strings.TrimSpace(vm.TemplateId)[0] == '<' {
 		desc := &DomainDesc{}

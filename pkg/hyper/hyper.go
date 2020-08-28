@@ -9,6 +9,7 @@ import (
 	libvirt "libvirt.org/libvirt-go"
 )
 
+//List provides a list of running VMs
 func List(c *libvirt.Connect) {
 	domains, err := c.ListAllDomains(libvirt.CONNECT_LIST_DOMAINS_ACTIVE | libvirt.CONNECT_LIST_DOMAINS_INACTIVE)
 	if err != nil {
@@ -29,6 +30,7 @@ func List(c *libvirt.Connect) {
 	}
 }
 
+//ApplyDesiredState takes in the desired state of the VM and attempts to apply the desired state
 func ApplyDesiredState(c *libvirt.Connect, uuid string, desiredState hyperAPI.PowerState) error {
 	d, err := c.LookupDomainByUUIDString(uuid)
 	if err != nil {
@@ -42,6 +44,7 @@ func ApplyDesiredState(c *libvirt.Connect, uuid string, desiredState hyperAPI.Po
 	return err
 }
 
+//Stats gets a current running VM's io/resource stats
 func Stats(c *libvirt.Connect, uuid string) error {
 	//Check exists
 	d, err := c.LookupDomainByUUIDString(uuid)

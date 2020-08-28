@@ -5,6 +5,12 @@ import (
 	"net"
 )
 
+/*
+Based from the libvirt XML format
+See https://libvirt.org/formatdomain.html for more info or potental additions
+*/
+
+//DomainDesc main domain description
 type DomainDesc struct {
 	XMLName  xml.Name       `xml:"domain"`
 	Type     string         `xml:"type,attr"`
@@ -31,26 +37,31 @@ type DomainDesc struct {
 	Devices DomainDevices `xml:"devices"`
 }
 
+//DomainMetadata main domain metadata
 type DomainMetadata struct {
 	Text string `xml:",innerxml"`
 }
 
+//DomainFeatures Hypervisor Features
 type DomainFeatures struct {
 	Acpi   *DomainFeatureAcpi  `xml:"acpi"`
 	Apic   *DomainFeatureApic  `xml:"apic"`
 	Vmport DomainFeatureVmport `xml:"vmport"`
 }
 
+//DomainFeatureVmport VMWare IO port support
 type DomainFeatureVmport struct {
 	State string `xml:"state,attr"`
 }
 
+//DomainBlockIOTune Block IO Tune
 type DomainBlockIOTune struct {
 	Weight int `xml:"weight,omitempty"`
 
 	Devices []DomainBlkIOTuneDevice `xml:"device"`
 }
 
+//DomainBlkIOTuneDevice Device level Block IO tuning
 type DomainBlkIOTuneDevice struct {
 	Path   string `xml:"path"`
 	Weight int    `xml:"weight,omitempty"`
@@ -61,61 +72,74 @@ type DomainBlkIOTuneDevice struct {
 	WriteIOPsSec  uint32 `xml:"write_iops_sec,omitempty"`
 }
 
+//DomainFeatureAcpi Feature ACPI
 type DomainFeatureAcpi struct{}
 
+//DomainFeatureApic Feature APIC
 type DomainFeatureApic struct{}
 
+//DomainMemory Memory
 type DomainMemory struct {
 	Amount uint64 `xml:",chardata"`
 	Unit   string `xml:"unit,attr"`
 }
 
+//DomainVCPU VCPU
 type DomainVCPU struct {
 	Count     uint16 `xml:",chardata"`
 	Placement string `xml:"placement,attr,omitempty"`
 	CPUSet    string `xml:"cpuset,attr,omitempty"`
 }
 
+//DomainCPU CPU
 type DomainCPU struct {
 	Mode  string `xml:"mode,attr"`
 	Check string `xml:"check,attr"`
 }
 
+//DomainOS OS
 type DomainOS struct {
 	Type DomainOSType `xml:"type"`
 	Boot DomainOSBoot `xml:"boot"`
 }
 
+//DomainOSType OS Type
 type DomainOSType struct {
 	Type    string `xml:",chardata"`
 	Arch    string `xml:"arch,attr"`
 	Machine string `xml:"machine,attr"`
 }
 
+//DomainOSBoot OS Boot Device
 type DomainOSBoot struct {
 	Dev string `xml:"dev,attr"`
 }
 
+//DomainClock Clock
 type DomainClock struct {
 	Offset string             `xml:"offset,attr"`
 	Timer  []DomainClockTimer `xml:"timer"`
 }
 
+//DomainClockTimer Clock Timer
 type DomainClockTimer struct {
 	Name       string `xml:"name,attr"`
 	Tickpolicy string `xml:"tickpolicy,attr,omitempty"`
 	Present    string `xml:"present,attr,omitempty"`
 }
 
+//DomainPM Power Management
 type DomainPM struct {
 	SuspendToMem  DomainPMSuspendType `xml:"suspend-to-mem"`
 	SuspendToDisk DomainPMSuspendType `xml:"suspend-to-disk"`
 }
 
+//DomainPMSuspendType PM Suspend Type
 type DomainPMSuspendType struct {
 	Enabled string `xml:"enabled,attr"`
 }
 
+//DomainDevices Devices
 type DomainDevices struct {
 	Emulator string `xml:"emulator"`
 
@@ -131,6 +155,7 @@ type DomainDevices struct {
 	MemBalloon  DomainMemoryBalloon `xml:"memballoon"`
 }
 
+//DomainDisk Disk
 type DomainDisk struct {
 	XMLName  xml.Name            `xml:"disk"`
 	Type     string              `xml:"type,attr"`
@@ -145,6 +170,7 @@ type DomainDisk struct {
 	Address      DomainDeviceAddr        `xml:"address"`
 }
 
+//DomainDiskIOTune Disk IO Tune
 type DomainDiskIOTune struct {
 	TotalBytesSec    uint64 `xml:"total_bytes_sec,omitempty"`
 	ReadBytesSec     uint64 `xml:"read_bytes_sec,omitempty"`
@@ -170,19 +196,24 @@ type DomainDiskIOTune struct {
 	WriteIopsSecMaxLength  uint64 `xml:"write_iops_sec_max_length,omitempty"`
 }
 
+//DomainDiskReadOnly Disk Read Only
 type DomainDiskReadOnly struct {
 	XMLName xml.Name `xml:"readonly"`
 }
 
+//DomainDiskTarget Disk Target
 type DomainDiskTarget struct {
 	Dev string `xml:"dev,attr"`
 	Bus string `xml:"bus,attr"`
 }
 
+//DomainDiskDriver Disk Driver
 type DomainDiskDriver struct {
 	Name string `xml:"name,attr"`
 	Type string `xml:"type,attr"`
 }
+
+//DomainDiskSource Disk Source
 type DomainDiskSource struct {
 	Name          string `xml:"name,attr,omitempty"`
 	File          string `xml:"file,attr,omitempty"`
@@ -192,15 +223,18 @@ type DomainDiskSource struct {
 	Host *DomainDiskSourceHost `xml:"host,omitempty"`
 }
 
+//DomainDiskSourceHost Disk Source Host
 type DomainDiskSourceHost struct {
 	Text string `xml:",chardata"`
 	Name string `xml:"name,attr,omitempty"`
 	Port string `xml:"port,attr,omitempty"`
 }
 
+//DomainDiskBackingStore Disk Backing Store
 type DomainDiskBackingStore struct {
 }
 
+//DomainDeviceAddr Device Addr
 type DomainDeviceAddr struct {
 	Type     string `xml:"type,attr,omitempty"`
 	Domain   string `xml:"domain,attr,omitempty"`
@@ -209,23 +243,27 @@ type DomainDeviceAddr struct {
 	Function string `xml:"function,attr,omitempty"`
 }
 
+//DomainConsole Console
 type DomainConsole struct {
 	Type string `xml:"type,attr"`
 
 	Target DomainConsoleTarget `xml:"target"`
 }
 
+//DomainConsoleTarget Console Target
 type DomainConsoleTarget struct {
 	Type string `xml:"type,attr"`
 	Port int    `xml:"port,attr"`
 }
 
+//DomainSerial Serial
 type DomainSerial struct {
 	Type string `xml:"type,attr"`
 
 	Target DomainSerialTarget `xml:"target"`
 }
 
+//DomainSerialTarget Serial Target
 type DomainSerialTarget struct {
 	Type string `xml:"type,attr"`
 	Port int    `xml:"port,attr"`
@@ -233,10 +271,12 @@ type DomainSerialTarget struct {
 	Model DomainSerialTargetModel `xml:"model"`
 }
 
+//DomainSerialTargetModel Serial Target Model
 type DomainSerialTargetModel struct {
 	Name string `xml:"name,attr"`
 }
 
+//DomainInterface Interface
 type DomainInterface struct {
 	Type string `xml:"type,attr"`
 
@@ -245,10 +285,12 @@ type DomainInterface struct {
 	Address DomainDeviceAddr `xml:"address"`
 }
 
+//DomainInterfaceMac Interface Mac
 type DomainInterfaceMac struct {
 	Address net.HardwareAddr `xml:"address,attr"`
 }
 
+//DomainController Controller
 type DomainController struct {
 	Type      string `xml:"type,attr"`
 	Index     string `xml:"index,attr"`
@@ -261,24 +303,29 @@ type DomainController struct {
 	Address *DomainDeviceAddr `xml:"address"`
 }
 
+//DomainControllerMaster Controller Master
 type DomainControllerMaster struct {
 	Startport string `xml:"startport,attr,omitempty"`
 }
 
+//DomainControllerModel Controller Model
 type DomainControllerModel struct {
 	Name string `xml:"name,attr,omitempty"`
 }
 
+//DomainControllerTarget Controller Target
 type DomainControllerTarget struct {
 	Chassis string `xml:"chassis,attr,omitempty"`
 	Port    string `xml:"port,attr,omitempty"`
 }
 
+//DomainMemoryBalloon Memory Balloon
 type DomainMemoryBalloon struct {
 	Model   string           `xml:"model,attr"`
 	Address DomainDeviceAddr `xml:"address"`
 }
 
+//DomainRNG RNG (Random Number Generator)
 type DomainRNG struct {
 	Model   string           `xml:"model,attr"`
 	Backend DomainRNGBackend `xml:"backend"`
@@ -286,16 +333,19 @@ type DomainRNG struct {
 	Address DomainDeviceAddr `xml:"address"`
 }
 
+//DomainRNGBackend RNG Backend
 type DomainRNGBackend struct {
 	Text  string `xml:",chardata"`
 	Model string `xml:"model,attr"`
 }
 
+//DomainVideo Video
 type DomainVideo struct {
 	Model   DomainVideoModel `xml:"model"`
 	Address DomainDeviceAddr `xml:"address"`
 }
 
+//DomainVideoModel Video Model
 type DomainVideoModel struct {
 	Text    string `xml:",chardata"`
 	Type    string `xml:"type,attr"`
@@ -306,6 +356,7 @@ type DomainVideoModel struct {
 	Primary string `xml:"primary,attr"`
 }
 
+//DomainGraphics Graphics
 type DomainGraphics struct {
 	Type     string `xml:"type,attr"`
 	Autoport string `xml:"autoport,attr"`
@@ -314,16 +365,19 @@ type DomainGraphics struct {
 	Image  DomainGraphicsImage  `xml:"image"`
 }
 
+//DomainGraphicsListen Graphics Listen
 type DomainGraphicsListen struct {
 	Text string `xml:",chardata"`
 	Type string `xml:"type,attr"`
 }
 
+//DomainGraphicsImage Graphics Image
 type DomainGraphicsImage struct {
 	Text        string `xml:",chardata"`
 	Compression string `xml:"compression,attr"`
 }
 
+//DomainChannel Channel
 type DomainChannel struct {
 	Type string `xml:"type,attr"`
 
@@ -332,11 +386,13 @@ type DomainChannel struct {
 	Address DomainDeviceAddr `xml:"address"`
 }
 
+//DomainChannelTarget Channel Target
 type DomainChannelTarget struct {
 	Type string `xml:"type,attr"`
 	Name string `xml:"name,attr"`
 }
 
+//DomainInput Input
 type DomainInput struct {
 	Type    string            `xml:"type,attr"`
 	Bus     string            `xml:"bus,attr"`
@@ -347,6 +403,7 @@ type DomainInput struct {
 ===== Back ups =====
 *******************/
 
+//DomainBackup Backup
 type DomainBackup struct {
 	XMLName xml.Name `xml:"domainbackup"`
 	Mode    string   `xml:"mode,attr,omitempty"`
@@ -355,6 +412,7 @@ type DomainBackup struct {
 	Incremental uint64             `xml:"incremental,omitempty"`
 }
 
+//DomainBackupDisk Backup Disk
 type DomainBackupDisk struct {
 	XMLName xml.Name `xml:"disk"`
 	Name    string   `xml:"name,attr"`
@@ -368,11 +426,13 @@ type DomainBackupDisk struct {
 	Target DomainBackupDiskTarget `xml:"target"`
 }
 
+//DomainBackupDiskDriver Backup Disk Driver
 type DomainBackupDiskDriver struct {
 	Name string `xml:"name,attr,omitempty"`
 	Type string `xml:"type,attr"`
 }
 
+//DomainBackupDiskTarget Backup Disk Target
 type DomainBackupDiskTarget struct {
 	File     string `xml:"file,attr,omitempty"`
 	Protocol string `xml:"protocol,attr,omitempty"`
@@ -380,12 +440,14 @@ type DomainBackupDiskTarget struct {
 	Host *DomainBackupDiskTargetHost `xml:"host,omitempty"`
 }
 
+//DomainBackupDiskTargetHost Backup Disk Target Host
 type DomainBackupDiskTargetHost struct {
 	Text string `xml:",chardata"`
 	Name string `xml:"name,attr,omitempty"`
 	Port string `xml:"port,attr,omitempty"`
 }
 
+//DomainCheckpoint Checkpoint
 type DomainCheckpoint struct {
 	XMLName     xml.Name `xml:"domaincheckpoint"`
 	Description string   `xml:"description"`
@@ -393,6 +455,7 @@ type DomainCheckpoint struct {
 	Disks []DomainCheckpointDisk `xml:"disks>disk"`
 }
 
+//DomainCheckpointDisk Checkpoint Disk
 type DomainCheckpointDisk struct {
 	XMLName    xml.Name `xml:"disk"`
 	Name       string   `xml:"name,attr"`

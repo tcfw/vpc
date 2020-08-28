@@ -17,6 +17,7 @@ const (
 	diskStore = "/var/local/vpc/cidisks"
 )
 
+//InstanceMetadata basic instance info
 type InstanceMetadata struct {
 	InstanceID string `json:"instance-id"`
 	CloudName  string `json:"cloud-name"`

@@ -9,11 +9,12 @@ import (
 	libvirt "libvirt.org/libvirt-go"
 )
 
+//AvailableDisks lists available disks
 func AvailableDisks() ([]string, error) {
 	files := []string{}
 
 	vol := &gfapi.Volume{}
-	if err := vol.Init("disks", "192.168.1.213"); err != nil {
+	if err := vol.Init("disks", "localhost"); err != nil {
 		return nil, fmt.Errorf("failed to connect: %s", err)
 	}
 
@@ -44,6 +45,7 @@ func AvailableDisks() ([]string, error) {
 	return files, nil
 }
 
+//Snapshot attempts to create a snapshot of a running VM
 func Snapshot(d *libvirt.Domain) error {
 	desc := &DomainBackup{
 		Disks: []DomainBackupDisk{

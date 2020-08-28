@@ -10,6 +10,7 @@ import (
 	"libvirt.org/libvirt-go"
 )
 
+//DefineVM takes in an API desc and creates a hypervisor accepted VM
 func DefineVM(c *libvirt.Connect, vm *hyperAPI.VM) error {
 	if vm.Id == "" {
 		return fmt.Errorf("vm has no id")
