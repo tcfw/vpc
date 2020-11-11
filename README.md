@@ -39,5 +39,8 @@ Can set up to use a linux VxLAN device, or use a TAP device with VxLAN encapsula
 ## L3
 The L3 agent provides the functionality to create the virtual router namespaces and provide simple DHCP/NAT & routing capabilities.
 
+## SBS
+Simple block storage - raft based replicated block storage medium exposing NBD endpoints
+
 # Similar architectures
 [Openstacks Neutron](https://wiki.openstack.org/wiki/Neutron) in Linux bridge mode.
